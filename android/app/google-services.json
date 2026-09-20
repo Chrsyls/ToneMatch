@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "507175667352",
+    "project_id": "tonematch-protel",
+    "storage_bucket": "tonematch-protel.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:507175667352:android:61124799ba680a3ec0b2ed",
+        "android_client_info": {
+          "package_name": "com.example.tonematch"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA0BhVYiyScGQOBXm8R0sNW_mhReUOu3m4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
