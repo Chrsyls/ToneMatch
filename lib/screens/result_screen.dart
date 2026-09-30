@@ -1,114 +1,109 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ResultScreen extends StatelessWidget {
   final String detectedUndertone;
-  final String? imageUrl; // Sekarang menerima URL internet
+  final String? imagePath;
 
-  const ResultScreen({
-    super.key, 
-    required this.detectedUndertone, 
-    this.imageUrl,
-  });
+  const ResultScreen({super.key, required this.detectedUndertone, this.imagePath});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Hasil Analisis'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Color(0xFF333333)),
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: Stack(
         children: [
-          // Menampilkan foto langsung dari internet (Firebase Storage)
-          if (imageUrl != null)
-            Container(
-              width: double.infinity,
-              height: 250,
-              color: Colors.grey[200],
-              child: Image.network(
-                imageUrl!,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return const Center(child: CircularProgressIndicator());
-                },
-              ),
-            ),
-
+          // Background Gradient
           Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            color: const Color(0xFFFCE4EC),
-            child: Column(
-              children: [
-                const Text('Undertone Anda adalah', style: TextStyle(fontSize: 16)),
-                const SizedBox(height: 8),
-                Text(
-                  detectedUndertone.toUpperCase(),
-                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFFE91E63)),
-                ),
-              ],
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFff9a9e), Color(0xFFfecfef), Color(0xFFfdfbfb)],
+                stops: [0.0, 0.5, 1.0],
+              ),
             ),
           ),
           
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text(
-              'Rekomendasi Makeup',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ),
-
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('makeup_products')
-                  .where('suitable_undertone', arrayContains: detectedUndertone)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text('Belum ada rekomendasi produk.'));
-                }
-
-                final products = snapshot.data!.docs;
-
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: products.length,
-                  itemBuilder: (context, index) {
-                    final data = products[index].data() as Map<String, dynamic>;
-                    
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: _hexToColor(data['hex_color']),
-                          radius: 20,
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Hasil Analisis', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF333333))),
+                  const SizedBox(height: 24),
+                  
+                  // Glass Panel Hasil
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(32),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
                         ),
-                        title: Text(data['name'] ?? 'Nama Produk', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text('Rp ${data['price'] ?? 0}'),
+                        child: Column(
+                          children: [
+                            const Text('Undertone Anda', style: TextStyle(fontSize: 16, color: Color(0xFF555555))),
+                            const SizedBox(height: 8),
+                            Text(
+                              detectedUndertone.toUpperCase(),
+                              // Perbaikan error FontWeight.black menjadi FontWeight.w900 ada di baris bawah ini:
+                              style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Color(0xFFE91E63), letterSpacing: 2),
+                            ),
+                          ],
+                        ),
                       ),
-                    );
-                  },
-                );
-              },
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 32),
+                  const Text('Rekomendasi Makeup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF333333))),
+                  const SizedBox(height: 16),
+                  
+                  // Dummy Rekomendasi (Sebelum disambung ke MySQL)
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.only(top: 0),
+                      itemCount: 3,
+                      itemBuilder: (context, index) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12.0),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: ListTile(
+                              leading: const CircleAvatar(backgroundColor: Color(0xFFB5654A), radius: 20),
+                              title: const Text('Velvet Matte - Terracotta', style: TextStyle(fontWeight: FontWeight.bold)),
+                              subtitle: const Text('Rp 89.000'),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.face_retouching_natural, color: Color(0xFFE91E63)),
+                                onPressed: () {},
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
-  }
-
-  Color _hexToColor(String? hexString) {
-    if (hexString == null) return Colors.grey;
-    final buffer = StringBuffer();
-    if (hexString.length == 6 || hexString.length == 7) buffer.write('ff');
-    buffer.write(hexString.replaceFirst('#', ''));
-    return Color(int.parse(buffer.toString(), radix: 16));
   }
 }

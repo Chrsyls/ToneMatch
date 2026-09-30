@@ -1,9 +1,10 @@
+import 'dart:ui';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:http/http.dart' as http; // Tambahan untuk ImgBB
-import 'dart:convert'; // Tambahan untuk encode Base64
-import 'result_screen.dart';
+import 'package:http/http.dart' as http;
+import 'result_screen.dart'; // Import halaman ResultScreen
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,135 +16,270 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final ImagePicker _picker = ImagePicker();
   bool _isLoading = false;
-  String _loadingText = '';
+  String _statusMessage = '';
 
-  Future<void> _pickAndUploadImage(ImageSource source) async {
+  Future<void> _uploadImageToMySQL(ImageSource source) async {
     try {
       final XFile? pickedFile = await _picker.pickImage(source: source);
       if (pickedFile == null) return;
 
       setState(() {
         _isLoading = true;
-        _loadingText = 'Mengunggah foto ke ImgBB...';
+        _statusMessage = 'Menganalisis wajah Anda...';
       });
 
-      // 1. Baca file dan ubah ke format Base64 agar mudah dikirim via API
-      final bytes = await pickedFile.readAsBytes();
-      final String base64Image = base64Encode(bytes);
+      // API Backend Python Lokal Anda
+      final uri = Uri.parse('http://127.0.0.1:8000/api/v1/analyze/undertone');
+      var request = http.MultipartRequest('POST', uri);
 
-      // 2. Kirim foto ke server ImgBB
-      // GANTI 'API_KEY_ANDA' DENGAN API KEY DARI WEBSITE IMGBB
-      const String imgbbApiKey = '04889b35b148848a8233bd521fc2be5c'; 
-      final url = Uri.parse('https://api.imgbb.com/1/upload');
-      
-      final response = await http.post(url, body: {
-        'key': imgbbApiKey,
-        'image': base64Image,
-      });
-
-      final responseData = json.decode(response.body);
-
-      if (responseData['success'] == true) {
-        // 3. Ambil URL publik dari respons ImgBB
-        final String downloadUrl = responseData['data']['url'];
-
-        setState(() {
-          _loadingText = 'Menyimpan data ke Firestore...';
-        });
-
-        // 4. Simpan URL tersebut ke Firestore (seperti rencana awal)
-        await FirebaseFirestore.instance.collection('classification_histories').add({
-          'user_id': 'usr_dummy_01',
-          'image_url': downloadUrl,
-          'detected_undertone': 'warm', // Simulasi hasil
-          'confidence_score': 0.85,
-          'timestamp': FieldValue.serverTimestamp(),
-        });
-
-        if (context.mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => ResultScreen(
-                detectedUndertone: 'warm',
-                imageUrl: downloadUrl, 
-              ),
-            ),
-          );
-        }
+      if (kIsWeb) {
+        final bytes = await pickedFile.readAsBytes();
+        request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: 'wajah.jpg'));
       } else {
-        throw Exception('Gagal mengunggah ke ImgBB');
+        request.files.add(await http.MultipartFile.fromPath('image', pickedFile.path));
       }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Terjadi kesalahan: $e')),
-        );
-      }
-    } finally {
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+      var responseData = json.decode(response.body);
+
       setState(() {
         _isLoading = false;
       });
+
+      if (response.statusCode == 200 && responseData['success'] == true) {
+        if (!context.mounted) return;
+        // Panggil dialog sukses dan oper path gambar serta undertone
+        _showSuccessDialog(
+          responseData['message'], 
+          responseData['data']['undertone'],
+          pickedFile.path, 
+        );
+      } else {
+        throw Exception(responseData['error'] ?? 'Gagal menghubungi server.');
+      }
+    } catch (e) {
+      setState(() { _isLoading = false; });
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
-  // ... (Sisa kode widget build di bawahnya tetap sama seperti sebelumnya) ...
+  void _showSuccessDialog(String message, String undertone, String imagePath) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Analisis Selesai ✨', style: TextStyle(color: Color(0xFFE91E63))),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message, style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFCE4EC),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome, color: Color(0xFFE91E63)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Undertone: ${undertone.toUpperCase()}', 
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFFE91E63))
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Tutup pop-up dialog
+              // Pindah ke ResultScreen untuk melihat rekomendasi makeup
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ResultScreen(
+                    detectedUndertone: undertone,
+                    imagePath: imagePath, // Mengirim foto agar tampil di ResultScreen
+                  ),
+                ),
+              );
+            },
+            child: const Text('Lihat Rekomendasi', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('ToneMatch', style: TextStyle(fontWeight: FontWeight.bold)),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.face_retouching_natural, size: 100, color: Color(0xFFE91E63)),
-              const SizedBox(height: 24),
-              const Text(
-                'Temukan Undertone Kulitmu',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+      body: Stack(
+        children: [
+          // 1. Background Gradient Aesthetic
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFff9a9e), // Soft Pink
+                  Color(0xFFfecfef), // Pale Lavender
+                  Color(0xFFfdfbfb), // White-ish
+                ],
+                stops: [0.0, 0.5, 1.0],
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Ambil foto wajahmu dengan pencahayaan yang terang untuk akurasi terbaik.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-              const SizedBox(height: 48),
-              
-              if (_isLoading) ...[
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                Text(_loadingText, style: const TextStyle(fontWeight: FontWeight.w500)),
-              ] else ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.camera_alt),
-                    label: const Text('Ambil Foto Kamera'),
-                    onPressed: () => _pickAndUploadImage(ImageSource.camera),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(Icons.photo_library),
-                    label: const Text('Pilih dari Galeri'),
-                    onPressed: () => _pickAndUploadImage(ImageSource.gallery),
-                  ),
-                ),
-              ],
-            ],
+            ),
           ),
-        ),
+          
+          // 2. Elemen Dekorasi Latar (Lingkaran Abstrak)
+          Positioned(
+            top: -50,
+            left: -50,
+            child: Container(
+              width: 200, height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withOpacity(0.3),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 100,
+            right: -80,
+            child: Container(
+              width: 250, height: 250,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFE91E63).withOpacity(0.1),
+              ),
+            ),
+          ),
+
+          // 3. Panel Glassmorphism Utama
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(32),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                  child: Container(
+                    padding: const EdgeInsets.all(32.0),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2), 
+                      borderRadius: BorderRadius.circular(32),
+                      border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5), 
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Icon Lingkaran dengan Gradient
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFE91E63), Color(0xFFff9a9e)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFE91E63).withOpacity(0.3),
+                                blurRadius: 15,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(Icons.face_retouching_natural, size: 50, color: Colors.white),
+                        ),
+                        const SizedBox(height: 24),
+                        
+                        // Teks Judul
+                        const Text(
+                          'ToneMatch',
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
+                            color: Color(0xFF333333),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        
+                        // Deskripsi
+                        const Text(
+                          'Unggah foto wajah Anda untuk membedah profil undertone dan temukan makeup yang paling cocok.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 14, color: Color(0xFF555555), height: 1.5),
+                        ),
+                        const SizedBox(height: 40),
+
+                        // State Loading / Tombol Aksi
+                        if (_isLoading) ...[
+                          const CircularProgressIndicator(color: Color(0xFFE91E63)),
+                          const SizedBox(height: 16),
+                          Text(_statusMessage, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF555555))),
+                        ] else ...[
+                          // Tombol Kamera
+                          ElevatedButton(
+                            onPressed: () => _uploadImageToMySQL(ImageSource.camera),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFE91E63),
+                              foregroundColor: Colors.white,
+                              elevation: 8,
+                              shadowColor: const Color(0xFFE91E63).withOpacity(0.5),
+                              minimumSize: const Size(double.infinity, 56),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.camera_alt_outlined),
+                                SizedBox(width: 12),
+                                Text('Ambil Foto', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Tombol Galeri
+                          OutlinedButton(
+                            onPressed: () => _uploadImageToMySQL(ImageSource.gallery),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF333333),
+                              side: const BorderSide(color: Colors.white, width: 2),
+                              backgroundColor: Colors.white.withOpacity(0.3),
+                              minimumSize: const Size(double.infinity, 56),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.photo_library_outlined),
+                                SizedBox(width: 12),
+                                Text('Pilih dari Galeri', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
