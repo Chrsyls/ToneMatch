@@ -1,10 +1,49 @@
 import 'dart:ui';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'saved_products_screen.dart';
+import 'edit_profile_screen.dart';
+import 'settings_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
-  Widget _buildGlassMenu(IconData icon, String title, {bool isDestructive = false}) {
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  String userName = 'Alvito Aryo';
+  String userEmail = 'test@tonematch.app';
+  String? avatarUrl;
+  final String baseUrl = 'http://192.168.11.166:8000';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/v1/users/usr_dummy_01'));
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded['success'] == true) {
+          setState(() {
+            userName = decoded['data']['name'] ?? 'Alvito Aryo';
+            userEmail = decoded['data']['email'] ?? 'test@tonematch.app';
+            avatarUrl = decoded['data']['avatar_url'];
+          });
+        }
+      }
+    } catch (e) {
+      // Ignore if offline
+    }
+  }
+
+  Widget _buildGlassMenu(IconData icon, String title, VoidCallback onTap, {bool isDestructive = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: ClipRRect(
@@ -13,15 +52,15 @@ class ProfileScreen extends StatelessWidget {
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white.withOpacity(0.4),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.5)),
+              border: Border.all(color: Colors.white.withOpacity(0.6)),
             ),
             child: ListTile(
-              leading: Icon(icon, color: isDestructive ? Colors.red : const Color(0xFFE91E63)),
-              title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: isDestructive ? Colors.red : const Color(0xFF333333))),
-              trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-              onTap: () {},
+              leading: Icon(icon, color: isDestructive ? Colors.red.shade400 : const Color(0xFFE91E63)),
+              title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDestructive ? Colors.red.shade400 : const Color(0xFF4A2333))),
+              trailing: const Icon(Icons.chevron_right, color: Color(0xFF7A5C61)),
+              onTap: onTap,
             ),
           ),
         ),
@@ -34,7 +73,6 @@ class ProfileScreen extends StatelessWidget {
     return Scaffold(
       body: Stack(
         children: [
-          // Background Gradient
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -51,30 +89,54 @@ class ProfileScreen extends StatelessWidget {
               child: Column(
                 children: [
                   const SizedBox(height: 20),
-                  // Avatar Profil
                   Container(
-                    width: 100, height: 100,
+                    width: 110, height: 110,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 4),
-                      image: const DecorationImage(
-                        image: NetworkImage('https://ui-avatars.com/api/?name=Alvito+Aryo&background=E91E63&color=fff'),
-                      ),
+                      color: const Color(0xFFE0E0E0),
+                      image: avatarUrl != null && avatarUrl!.isNotEmpty
+                          ? DecorationImage(fit: BoxFit.cover, image: NetworkImage('$baseUrl/$avatarUrl'))
+                          : null,
                       boxShadow: [
                         BoxShadow(color: const Color(0xFFE91E63).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10)),
                       ],
                     ),
+                    child: avatarUrl == null || avatarUrl!.isEmpty
+                        ? const Icon(Icons.person, size: 70, color: Colors.white)
+                        : null,
                   ),
                   const SizedBox(height: 16),
-                  const Text('Alvito Aryo', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF333333))),
-                  const Text('alvito@tonematch.app', style: TextStyle(color: Color(0xFF555555))),
-                  const SizedBox(height: 40),
+                  Text(userName, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
+                  const SizedBox(height: 4),
+                  Text(userEmail, style: const TextStyle(fontSize: 16, color: Color(0xFF7A5C61))),
+                  const SizedBox(height: 30),
                   
-                  // Menu (Preferensi Kulit dihapus)
-                  _buildGlassMenu(Icons.favorite_border, 'Produk Tersimpan'),
-                  _buildGlassMenu(Icons.settings_outlined, 'Pengaturan UI'),
+                  _buildGlassMenu(Icons.edit_outlined, 'Edit Profil', () async {
+                    final result = await Navigator.push(
+                      context, 
+                      MaterialPageRoute(
+                        builder: (context) => EditProfileScreen(
+                          initialName: userName,
+                          initialEmail: userEmail,
+                          initialAvatarUrl: avatarUrl,
+                        ),
+                      ),
+                    );
+                    if (result == true) {
+                      _loadUserProfile();
+                    }
+                  }),
+                  _buildGlassMenu(Icons.bookmark_outline, 'Produk Tersimpan', () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const SavedProductsScreen()));
+                  }),
+                  _buildGlassMenu(Icons.settings_outlined, 'Pengaturan', () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+                  }),
                   const Spacer(),
-                  _buildGlassMenu(Icons.logout, 'Keluar (Logout)', isDestructive: true),
+                  _buildGlassMenu(Icons.logout, 'Keluar (Logout)', () {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fitur Logout menyusul')));
+                  }, isDestructive: true),
                 ],
               ),
             ),

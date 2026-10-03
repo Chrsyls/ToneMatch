@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'firebase_options.dart';
 import 'screens/main_navigation.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Inisialisasi Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -29,12 +29,15 @@ class ToneMatchApp extends StatelessWidget {
           secondary: const Color(0xFFFFC107),
         ),
         useMaterial3: true,
-        fontFamily: 'Roboto',
+        
+        // PERBAIKAN: Gunakan fontFamily langsung untuk menghindari bentrok class TextTheme
+        fontFamily: GoogleFonts.josefinSans().fontFamily,
+        
         appBarTheme: const AppBarTheme(
           centerTitle: true,
           elevation: 0,
           backgroundColor: Colors.transparent,
-          foregroundColor: Color(0xFF333333),
+          foregroundColor: Color(0xFF4A2333),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(

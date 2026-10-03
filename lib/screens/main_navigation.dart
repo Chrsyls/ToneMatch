@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'home_screen.dart';
 import 'history_screen.dart';
 import 'profile_screen.dart';
-import 'result_screen.dart'; // Import halaman Result
+import 'result_screen.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -20,9 +20,6 @@ class _MainNavigationState extends State<MainNavigation> {
     const ProfileScreen(),
   ];
 
-  // ==========================================
-  // FUNGSI UNTUK MENAMPILKAN MENU DEBUG (PINTASAN)
-  // ==========================================
   void _showDebugMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -37,55 +34,36 @@ class _MainNavigationState extends State<MainNavigation> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('🛠️ Developer Debug Menu', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF333333))),
+                const Text('🛠️ Developer Debug Menu', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
                 const SizedBox(height: 16),
-                
-                // Pintasan ke Result Screen
                 ListTile(
                   leading: const Icon(Icons.auto_awesome, color: Color(0xFFE91E63)),
-                  title: const Text('Buka Halaman Result'),
-                  subtitle: const Text('Melihat UI hasil dengan data simulasi'),
-                  trailing: const Icon(Icons.chevron_right),
+                  title: const Text('Buka Halaman Result', style: TextStyle(color: Color(0xFF4A2333))),
+                  subtitle: const Text('Melihat UI hasil dengan data simulasi', style: TextStyle(color: Color(0xFF7A5C61))),
+                  trailing: const Icon(Icons.chevron_right, color: Color(0xFF7A5C61)),
                   onTap: () {
-                    Navigator.pop(context); // Tutup menu
+                    Navigator.pop(context);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => const ResultScreen(
-                          detectedUndertone: 'neutral', // Data dummy
+                          detectedUndertone: 'warm', 
                           imagePath: null,
                         ),
                       ),
                     );
                   },
                 ),
-
-                // Pintasan ke Login (Placeholder)
                 ListTile(
                   leading: const Icon(Icons.login, color: Colors.blue),
-                  title: const Text('Buka Halaman Login'),
-                  subtitle: const Text('Belum dibuat (Placeholder)'),
-                  trailing: const Icon(Icons.chevron_right),
+                  title: const Text('Buka Halaman Login', style: TextStyle(color: Color(0xFF4A2333))),
+                  subtitle: const Text('Belum dibuat (Placeholder)', style: TextStyle(color: Color(0xFF7A5C61))),
+                  trailing: const Icon(Icons.chevron_right, color: Color(0xFF7A5C61)),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const DummyScreen(title: 'Login Screen')),
-                    );
-                  },
-                ),
-
-                // Pintasan ke Register (Placeholder)
-                ListTile(
-                  leading: const Icon(Icons.app_registration, color: Colors.green),
-                  title: const Text('Buka Halaman Register'),
-                  subtitle: const Text('Belum dibuat (Placeholder)'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const DummyScreen(title: 'Register Screen')),
                     );
                   },
                 ),
@@ -101,23 +79,17 @@ class _MainNavigationState extends State<MainNavigation> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _pages[_currentIndex],
-      
-      // ==========================================
-      // TOMBOL DEBUG MELAYANG (Hanya untuk masa development)
-      // ==========================================
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showDebugMenu(context),
-        backgroundColor: Colors.black87,
-        mini: true, // Ukuran kecil agar tidak mengganggu UI desain
+        backgroundColor: const Color(0xFF4A2333),
+        mini: true, 
         elevation: 10,
         child: const Icon(Icons.bug_report, color: Colors.white, size: 20),
       ),
-
-      // Bottom Navigation Bar (Tetap sama)
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, -5)),
+            BoxShadow(color: const Color(0xFF4A2333).withOpacity(0.05), blurRadius: 20, offset: const Offset(0, -5)),
           ],
         ),
         child: BottomNavigationBar(
@@ -125,7 +97,7 @@ class _MainNavigationState extends State<MainNavigation> {
           onTap: (index) => setState(() => _currentIndex = index),
           backgroundColor: Colors.white,
           selectedItemColor: const Color(0xFFE91E63),
-          unselectedItemColor: Colors.grey.shade400,
+          unselectedItemColor: const Color(0xFFD1B3BA), // Soft muted pink
           showSelectedLabels: true,
           showUnselectedLabels: false,
           elevation: 0,
@@ -140,9 +112,6 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 }
 
-// ==========================================
-// KELAS TAMBAHAN UNTUK HALAMAN YANG BELUM DIBUAT
-// ==========================================
 class DummyScreen extends StatelessWidget {
   final String title;
   const DummyScreen({super.key, required this.title});
@@ -155,7 +124,7 @@ class DummyScreen extends StatelessWidget {
         child: Text(
           '$title\n(Akan kita bangun nanti)',
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 18, color: Colors.grey),
+          style: const TextStyle(fontSize: 18, color: Color(0xFF7A5C61)),
         ),
       ),
     );
