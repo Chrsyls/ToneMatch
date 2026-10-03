@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import '../widgets/dynamic_background.dart';
 
 class SavedProductsScreen extends StatefulWidget {
   const SavedProductsScreen({super.key});
@@ -24,22 +25,23 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
   }
 
   Future<void> _fetchFavorites() async {
+    setState(() { _isLoading = true; _errorMessage = null; });
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/v1/favorites/usr_dummy_01'));
+      final response = await http.get(Uri.parse('$baseUrl/api/v1/favorites/usr_dummy_01')).timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
         if (decoded['success'] == true) {
-          setState(() {
-            _favorites = decoded['data'];
-            _isLoading = false;
-          });
+          if (mounted) setState(() => _favorites = decoded['data'] ?? []);
+        } else {
+          if (mounted) setState(() => _errorMessage = decoded['error'] ?? 'Gagal memuat produk favorit');
         }
+      } else {
+        if (mounted) setState(() => _errorMessage = 'Server merespons dengan status: ${response.statusCode}');
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = e.toString();
-        _isLoading = false;
-      });
+      if (mounted) setState(() => _errorMessage = 'Tidak dapat memuat data favorit.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -47,12 +49,8 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
     try {
       final response = await http.delete(Uri.parse('$baseUrl/api/v1/favorites/$favoriteId'));
       if (response.statusCode == 200) {
-        setState(() {
-          _favorites.removeWhere((item) => item['favorite_id'] == favoriteId);
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Produk dihapus dari favorit')));
-        }
+        setState(() => _favorites.removeWhere((item) => item['favorite_id'] == favoriteId));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Produk dihapus dari favorit')));
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -71,31 +69,37 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Produk Tersimpan', style: TextStyle(color: Color(0xFF4A2333), fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        backgroundColor: Colors.transparent, elevation: 0,
         iconTheme: const IconThemeData(color: Color(0xFF4A2333)),
       ),
       body: Stack(
         children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFff9a9e), Color(0xFFfecfef), Color(0xFFfdfbfb)],
-                stops: [0.0, 0.5, 1.0],
-              ),
-            ),
-          ),
+          const DynamicBackground(),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(24.0),
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator(color: Color(0xFFE91E63)))
                   : _errorMessage != null
-                      ? Center(child: Text('Error: $_errorMessage', style: const TextStyle(color: Colors.red)))
+                      ? Center(child: Text(_errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF7A5C61), fontWeight: FontWeight.bold)))
                       : _favorites.isEmpty
-                          ? const Center(child: Text('Belum ada produk tersimpan.', style: TextStyle(color: Color(0xFF7A5C61), fontSize: 16)))
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(24),
+                                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle),
+                                    child: const Icon(Icons.bookmark_border_rounded, size: 70, color: Color(0xFFE91E63)),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  const Text('Belum Ada Produk', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
+                                  const SizedBox(height: 8),
+                                  const Text('Simpan rekomendasi makeup favoritmu\nagar mudah dilihat kembali nanti!', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF7A5C61), fontSize: 15, height: 1.5)),
+                                  const SizedBox(height: 60),
+                                ],
+                              ),
+                            )
                           : ListView.builder(
                               itemCount: _favorites.length,
                               itemBuilder: (context, index) {

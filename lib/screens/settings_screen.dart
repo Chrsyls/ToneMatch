@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../widgets/dynamic_background.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -18,22 +19,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Pengaturan', style: TextStyle(color: Color(0xFF4A2333), fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        backgroundColor: Colors.transparent, elevation: 0,
         iconTheme: const IconThemeData(color: Color(0xFF4A2333)),
       ),
       body: Stack(
         children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFff9a9e), Color(0xFFfecfef), Color(0xFFfdfbfb)],
-                stops: [0.0, 0.5, 1.0],
-              ),
-            ),
-          ),
+          const DynamicBackground(), // Background Dinamis Aktif!
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(24.0),
@@ -47,8 +38,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.4),
-                          borderRadius: BorderRadius.circular(16),
+                          color: Colors.white.withOpacity(0.4), borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: Colors.white.withOpacity(0.6)),
                         ),
                         child: Column(
@@ -82,8 +72,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.4),
-                          borderRadius: BorderRadius.circular(16),
+                          color: Colors.white.withOpacity(0.4), borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: Colors.white.withOpacity(0.6)),
                         ),
                         child: const ListTile(

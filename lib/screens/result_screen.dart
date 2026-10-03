@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import '../widgets/dynamic_background.dart';
 
 class ResultScreen extends StatefulWidget {
   final String detectedUndertone;
@@ -18,8 +19,6 @@ class _ResultScreenState extends State<ResultScreen> {
   List<dynamic> _recommendations = [];
   bool _isLoading = true;
   String? _errorMessage;
-  
-  // IP Address Laptop Anda
   final String baseUrl = 'http://192.168.11.166:8000';
 
   @override
@@ -32,14 +31,10 @@ class _ResultScreenState extends State<ResultScreen> {
     try {
       final uri = Uri.parse('$baseUrl/api/v1/recommendations/${widget.detectedUndertone}');
       final response = await http.get(uri);
-
       if (response.statusCode == 200) {
         final decodedData = json.decode(response.body);
         if (decodedData['success'] == true) {
-          setState(() {
-            _recommendations = decodedData['data'];
-            _isLoading = false;
-          });
+          setState(() { _recommendations = decodedData['data']; _isLoading = false; });
         } else {
           throw Exception(decodedData['error']);
         }
@@ -47,14 +42,10 @@ class _ResultScreenState extends State<ResultScreen> {
         throw Exception('Gagal memuat rekomendasi.');
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = e.toString();
-        _isLoading = false;
-      });
+      setState(() { _errorMessage = e.toString(); _isLoading = false; });
     }
   }
 
-  // CRUD: Fungsi Menyimpan Produk Favorit (Create)
   Future<void> _saveToFavorites(String productId) async {
     try {
       final response = await http.post(
@@ -63,18 +54,10 @@ class _ResultScreenState extends State<ResultScreen> {
         body: json.encode({"user_id": "usr_dummy_01", "product_id": productId}),
       );
       if (response.statusCode == 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Produk berhasil disimpan ke Favorit! ✨'))
-          );
-        }
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Produk berhasil disimpan ke Favorit! ✨')));
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'))
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -89,22 +72,12 @@ class _ResultScreenState extends State<ResultScreen> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        backgroundColor: Colors.transparent, elevation: 0,
         iconTheme: const IconThemeData(color: Color(0xFF4A2333)),
       ),
       body: Stack(
         children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFff9a9e), Color(0xFFfecfef), Color(0xFFfdfbfb)],
-                stops: [0.0, 0.5, 1.0],
-              ),
-            ),
-          ),
+          const DynamicBackground(), // Background Dinamis Aktif!
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -118,11 +91,9 @@ class _ResultScreenState extends State<ResultScreen> {
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                       child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(32),
+                        width: double.infinity, padding: const EdgeInsets.all(32),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.4),
-                          borderRadius: BorderRadius.circular(24),
+                          color: Colors.white.withOpacity(0.4), borderRadius: BorderRadius.circular(24),
                           border: Border.all(color: Colors.white.withOpacity(0.6), width: 1.5),
                         ),
                         child: Column(
@@ -157,8 +128,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                         padding: const EdgeInsets.only(bottom: 12.0),
                                         child: Container(
                                           decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(0.7),
-                                            borderRadius: BorderRadius.circular(16),
+                                            color: Colors.white.withOpacity(0.7), borderRadius: BorderRadius.circular(16),
                                             border: Border.all(color: Colors.white.withOpacity(0.5), width: 1),
                                           ),
                                           child: ListTile(

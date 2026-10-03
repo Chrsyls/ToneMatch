@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import 'saved_products_screen.dart';
 import 'edit_profile_screen.dart';
 import 'settings_screen.dart';
+// Import widget background dinamis
+import '../widgets/dynamic_background.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -73,16 +75,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFff9a9e), Color(0xFFfecfef), Color(0xFFfdfbfb)],
-                stops: [0.0, 0.5, 1.0],
-              ),
-            ),
-          ),
+          // MEMANGGIL BACKGROUND DINAMIS DI SINI
+          const DynamicBackground(),
+          
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(24.0),
@@ -123,9 +118,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     );
-                    if (result == true) {
-                      _loadUserProfile();
-                    }
+                    if (result == true) _loadUserProfile();
                   }),
                   _buildGlassMenu(Icons.bookmark_outline, 'Produk Tersimpan', () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const SavedProductsScreen()));

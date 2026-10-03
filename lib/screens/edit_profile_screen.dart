@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import '../widgets/dynamic_background.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final String initialName;
@@ -88,9 +89,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       if (response.statusCode == 200) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Profil & Kredensial berhasil diperbarui! ✨'))
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profil & Kredensial berhasil diperbarui! ✨')));
           Navigator.pop(context, true);
         }
       } else {
@@ -98,21 +97,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         throw Exception(errorData['error'] ?? 'Terjadi kesalahan pada server.');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'))
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
-      if (mounted) {
-        setState(() { _isSaving = false; });
-      }
+      if (mounted) setState(() { _isSaving = false; });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Menentukan tampilan gambar profil (ikon default siluet abu-abu jika tidak ada foto)
     ImageProvider? avatarProvider;
     if (_selectedImage != null) {
       avatarProvider = kIsWeb ? NetworkImage(_selectedImage!.path) : FileImage(File(_selectedImage!.path)) as ImageProvider;
@@ -130,16 +122,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
       body: Stack(
         children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFff9a9e), Color(0xFFfecfef), Color(0xFFfdfbfb)],
-                stops: [0.0, 0.5, 1.0],
-              ),
-            ),
-          ),
+          const DynamicBackground(), // Background Dinamis Aktif!
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -158,46 +141,29 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Foto Profil dengan ikon siluet abu-abu default referensi
                           Stack(
                             children: [
                               Container(
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFFE91E63).withOpacity(0.2),
-                                      blurRadius: 15,
-                                      offset: const Offset(0, 8),
-                                    ),
-                                  ],
+                                  boxShadow: [BoxShadow(color: const Color(0xFFE91E63).withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 8))],
                                 ),
                                 child: CircleAvatar(
                                   radius: 55,
-                                  backgroundColor: const Color(0xFFE0E0E0), // Warna latar abu-abu default
+                                  backgroundColor: const Color(0xFFE0E0E0),
                                   backgroundImage: avatarProvider,
-                                  child: avatarProvider == null
-                                      ? const Icon(Icons.person, size: 70, color: Colors.white) // Ikon siluet default
-                                      : null,
+                                  child: avatarProvider == null ? const Icon(Icons.person, size: 70, color: Colors.white) : null,
                                 ),
                               ),
                               Positioned(
-                                bottom: 0,
-                                right: 0,
+                                bottom: 0, right: 0,
                                 child: InkWell(
                                   onTap: _pickImage,
                                   child: Container(
                                     padding: const EdgeInsets.all(10),
                                     decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: const Color(0xFFE91E63),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.15),
-                                          blurRadius: 6,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ],
+                                      shape: BoxShape.circle, color: const Color(0xFFE91E63),
+                                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 6, offset: const Offset(0, 3))],
                                     ),
                                     child: const Icon(Icons.camera_alt, size: 18, color: Colors.white),
                                   ),
@@ -206,8 +172,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          
-                          // Opsi Hapus Foto Profil kembali ke Default
                           if (_selectedImage != null || (_currentAvatarUrl != null && _currentAvatarUrl!.isNotEmpty && !_isAvatarRemoved))
                             TextButton.icon(
                               onPressed: _removeAvatar,
@@ -215,72 +179,43 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               label: const Text('Hapus Foto Profil', style: TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                             )
                           else
-                            const Text(
-                              'Ketuk ikon kamera untuk mengganti foto',
-                              style: TextStyle(fontSize: 13, color: Color(0xFF7A5C61), fontWeight: FontWeight.w500),
-                            ),
-                          
+                            const Text('Ketuk ikon kamera untuk mengganti foto', style: TextStyle(fontSize: 13, color: Color(0xFF7A5C61), fontWeight: FontWeight.w500)),
                           const SizedBox(height: 24),
-                          
-                          // Input Nama
                           TextField(
                             controller: _nameController,
                             style: const TextStyle(color: Color(0xFF4A2333), fontWeight: FontWeight.w600),
                             decoration: InputDecoration(
-                              labelText: 'Nama Lengkap',
-                              labelStyle: const TextStyle(color: Color(0xFF7A5C61)),
+                              labelText: 'Nama Lengkap', labelStyle: const TextStyle(color: Color(0xFF7A5C61)),
                               prefixIcon: const Icon(Icons.person_outline, color: Color(0xFFE91E63)),
-                              filled: true,
-                              fillColor: Colors.white.withOpacity(0.6),
+                              filled: true, fillColor: Colors.white.withOpacity(0.6),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: const BorderSide(color: Color(0xFFE91E63), width: 1.5),
-                              ),
+                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE91E63), width: 1.5)),
                             ),
                           ),
                           const SizedBox(height: 16),
-                          
-                          // Input Email
                           TextField(
                             controller: _emailController,
                             style: const TextStyle(color: Color(0xFF4A2333), fontWeight: FontWeight.w600),
                             decoration: InputDecoration(
-                              labelText: 'Email Kredensial',
-                              labelStyle: const TextStyle(color: Color(0xFF7A5C61)),
+                              labelText: 'Email Kredensial', labelStyle: const TextStyle(color: Color(0xFF7A5C61)),
                               prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFFE91E63)),
-                              filled: true,
-                              fillColor: Colors.white.withOpacity(0.6),
+                              filled: true, fillColor: Colors.white.withOpacity(0.6),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: const BorderSide(color: Color(0xFFE91E63), width: 1.5),
-                              ),
+                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE91E63), width: 1.5)),
                             ),
                           ),
                           const SizedBox(height: 32),
-                          
-                          // Tombol Simpan
                           ElevatedButton(
                             onPressed: _isSaving ? null : _updateProfile,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFE91E63),
-                              foregroundColor: Colors.white,
-                              elevation: 6,
-                              shadowColor: const Color(0xFFE91E63).withOpacity(0.4),
+                              backgroundColor: const Color(0xFFE91E63), foregroundColor: Colors.white,
+                              elevation: 6, shadowColor: const Color(0xFFE91E63).withOpacity(0.4),
                               minimumSize: const Size(double.infinity, 54),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                             ),
                             child: _isSaving
-                                ? const SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                                  )
-                                : const Text(
-                                    'Simpan Perubahan',
-                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                                  ),
+                                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                                : const Text('Simpan Perubahan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                           ),
                         ],
                       ),
