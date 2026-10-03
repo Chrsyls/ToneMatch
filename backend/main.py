@@ -22,17 +22,18 @@ def get_db_connection():
         database="tonematch_db"
     )
 
-# Inisialisasi kolom avatar_url jika belum ada di tabel users
+# Inisialisasi kolom role dan avatar_url jika belum ada di tabel users
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(255)")
         conn.commit()
         cursor.close()
         conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Init DB Notice: {e}")
 
 init_db()
 
@@ -48,9 +49,12 @@ async def analyze_undertone(image: UploadFile = File(...)):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT uid FROM users WHERE uid = 'usr_dummy_01'")
+        cursor.execute("SELECT uid FROM users WHERE uid = %s", ('usr_dummy_01',))
         if not cursor.fetchone():
-            cursor.execute("INSERT INTO users (uid, email, name) VALUES ('usr_dummy_01', 'test@tonematch.app', 'Alvito Aryo')")
+            cursor.execute(
+                "INSERT INTO users (uid, email, name, role) VALUES (%s, %s, %s, %s)", 
+                ('usr_dummy_01', 'test@tonematch.app', 'Alvito Aryo', 'super_admin')
+            )
             conn.commit()
 
         history_id = f"hist_{int(time.time())}"
@@ -191,13 +195,18 @@ def get_user_profile(user_id: str):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT uid, email, name, avatar_url FROM users WHERE uid = %s", (user_id,))
+        cursor.execute("SELECT uid, email, name, role, avatar_url FROM users WHERE uid = %s", (user_id,))
         user = cursor.fetchone()
         
         if not user:
-            cursor.execute("INSERT INTO users (uid, email, name) VALUES (%s, %s, %s)", (user_id, 'test@tonematch.app', 'Alvito Aryo'))
+            # Default role untuk akun uji coba otomatis diset 'super_admin' agar fitur lengkap bisa diuji
+            default_role = 'super_admin' if user_id == 'usr_dummy_01' else 'user'
+            cursor.execute(
+                "INSERT INTO users (uid, email, name, role) VALUES (%s, %s, %s, %s)", 
+                (user_id, 'test@tonematch.app', 'Alvito Aryo', default_role)
+            )
             conn.commit()
-            cursor.execute("SELECT uid, email, name, avatar_url FROM users WHERE uid = %s", (user_id,))
+            cursor.execute("SELECT uid, email, name, role, avatar_url FROM users WHERE uid = %s", (user_id,))
             user = cursor.fetchone()
             
         cursor.close()
@@ -212,6 +221,7 @@ async def update_user_profile(
     user_id: str, 
     name: str = Form(None), 
     email: str = Form(None), 
+    role: str = Form(None),
     remove_avatar: str = Form("false"),
     avatar: UploadFile | None = File(None)
 ):
@@ -233,21 +243,100 @@ async def update_user_profile(
         
         new_name = name if name is not None and name.strip() != "" else ("Alvito Aryo" if not user else user['name'])
         new_email = email if email is not None and email.strip() != "" else ("test@tonematch.app" if not user else user['email'])
+        new_role = role if role is not None and role.strip() != "" else ("super_admin" if not user else user.get('role', 'user'))
         
         if not user:
             cursor.execute(
-                "INSERT INTO users (uid, email, name, avatar_url) VALUES (%s, %s, %s, %s)",
-                (user_id, new_email, new_name, avatar_path)
+                "INSERT INTO users (uid, email, name, role, avatar_url) VALUES (%s, %s, %s, %s, %s)",
+                (user_id, new_email, new_name, new_role, avatar_path)
             )
         else:
             cursor.execute(
-                "UPDATE users SET name = %s, email = %s, avatar_url = %s WHERE uid = %s", 
-                (new_name, new_email, avatar_path, user_id)
+                "UPDATE users SET name = %s, email = %s, role = %s, avatar_url = %s WHERE uid = %s", 
+                (new_name, new_email, new_role, avatar_path, user_id)
             )
         conn.commit()
         
         cursor.close()
         conn.close()
-        return {"success": True, "message": "Profil berhasil diperbarui!", "avatar_url": avatar_path}
+        return {"success": True, "message": "Profil berhasil diperbarui!", "avatar_url": avatar_path, "role": new_role}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+# --- ADMIN: STATISTIK DASHBOARD ---
+@app.get("/api/v1/admin/stats")
+def get_admin_stats():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("SELECT COUNT(*) AS total_users FROM users")
+        users_count = cursor.fetchone()['total_users']
+        
+        cursor.execute("SELECT COUNT(*) AS total_history FROM classification_histories")
+        history_count = cursor.fetchone()['total_history']
+        
+        cursor.execute("SELECT COUNT(*) AS total_products FROM makeup_products")
+        products_count = cursor.fetchone()['total_products']
+        
+        cursor.close()
+        conn.close()
+        return {
+            "success": True, 
+            "data": {
+                "total_users": users_count,
+                "total_history": history_count,
+                "total_products": products_count
+            }
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+# --- ADMIN: LIST SEMUA PENGGUNA ---
+@app.get("/api/v1/admin/users")
+def get_all_users():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT uid, name, email, role, created_at FROM users ORDER BY created_at DESC")
+        users = cursor.fetchall()
+        for u in users:
+            if isinstance(u.get('created_at'), datetime):
+                u['created_at'] = u['created_at'].isoformat()
+        cursor.close()
+        conn.close()
+        return {"success": True, "data": users}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+# --- ADMIN: UPDATE ROLE PENGGUNA ---
+@app.put("/api/v1/admin/users/{target_uid}/role")
+async def update_user_role(target_uid: str, data: dict):
+    try:
+        new_role = data.get("role")
+        if new_role not in ['super_admin', 'admin', 'user']:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Role tidak valid"})
+            
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET role = %s WHERE uid = %s", (new_role, target_uid))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {"success": True, "message": "Role pengguna berhasil diperbarui!"}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+# --- ADMIN: HAPUS PENGGUNA ---
+@app.delete("/api/v1/admin/users/{target_uid}")
+def delete_user(target_uid: str):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM users WHERE uid = %s", (target_uid,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {"success": True, "message": "Pengguna berhasil dihapus"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})

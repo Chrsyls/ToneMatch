@@ -19,7 +19,7 @@ class _ResultScreenState extends State<ResultScreen> {
   List<dynamic> _recommendations = [];
   bool _isLoading = true;
   String? _errorMessage;
-  final String baseUrl = 'http://192.168.11.166:8000';
+  final String baseUrl = 'http://192.168.100.68:8000';
 
   @override
   void initState() {

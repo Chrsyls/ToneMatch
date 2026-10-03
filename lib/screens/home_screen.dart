@@ -28,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _statusMessage = 'Menganalisis wajah Anda...';
       });
 
-      final uri = Uri.parse('http://192.168.11.166:8000/api/v1/analyze/undertone');
+      final uri = Uri.parse('http://192.168.100.68:8000/api/v1/analyze/undertone');
       var request = http.MultipartRequest('POST', uri);
 
       if (kIsWeb) {

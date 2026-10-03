@@ -31,7 +31,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? _currentAvatarUrl;
   bool _isAvatarRemoved = false;
   bool _isSaving = false;
-  final String baseUrl = 'http://192.168.11.166:8000';
+  final String baseUrl = 'http://192.168.100.68:8000';
 
   @override
   void initState() {
