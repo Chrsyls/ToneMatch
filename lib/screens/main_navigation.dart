@@ -3,7 +3,6 @@ import 'package:http/http.dart' as http;
 import 'home_screen.dart';
 import 'history_screen.dart';
 import 'profile_screen.dart';
-import 'result_screen.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -14,7 +13,7 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
-  final String baseUrl = 'http://192.168.100.68:8000';
+  final String baseUrl = 'http://192.168.11.166:8000'; // Sesuaikan IP Anda
 
   // GlobalKey untuk mengontrol state ProfileScreen dari luar
   final GlobalKey<ProfileScreenState> _profileKey = GlobalKey<ProfileScreenState>();
@@ -22,7 +21,7 @@ class _MainNavigationState extends State<MainNavigation> {
   late final List<Widget> _pages = [
     const HomeScreen(),
     const HistoryScreen(),
-    ProfileScreen(key: _profileKey), // Hubungkan key di sini
+    ProfileScreen(key: _profileKey),
   ];
 
   Future<void> _switchRole(BuildContext context, String newRole) async {
@@ -39,7 +38,6 @@ class _MainNavigationState extends State<MainNavigation> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Berhasil pindah role ke: ${newRole.toUpperCase()} ✨')),
           );
-          // Langsung panggil fungsi load data di ProfileScreen secara instan
           _profileKey.currentState?.loadUserProfile();
           setState(() {});
         }
@@ -72,7 +70,7 @@ class _MainNavigationState extends State<MainNavigation> {
                 const Text('🛠️ Developer Debug Menu', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
                 const SizedBox(height: 16),
                 const Text('Simulasi Pindah Role Akun:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF7A5C61))),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
@@ -92,25 +90,6 @@ class _MainNavigationState extends State<MainNavigation> {
                       child: const Text('Super Admin'),
                     ),
                   ],
-                ),
-                const Divider(height: 30),
-                ListTile(
-                  leading: const Icon(Icons.auto_awesome, color: Color(0xFFE91E63)),
-                  title: const Text('Buka Halaman Result', style: TextStyle(color: Color(0xFF4A2333))),
-                  subtitle: const Text('Melihat UI hasil dengan data simulasi', style: TextStyle(color: Color(0xFF7A5C61))),
-                  trailing: const Icon(Icons.chevron_right, color: Color(0xFF7A5C61)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ResultScreen(
-                          detectedUndertone: 'warm', 
-                          imagePath: null,
-                        ),
-                      ),
-                    );
-                  },
                 ),
               ],
             ),
@@ -141,7 +120,6 @@ class _MainNavigationState extends State<MainNavigation> {
           currentIndex: _currentIndex,
           onTap: (index) {
             setState(() => _currentIndex = index);
-            // Jika tab profil diklik (index 2), paksa refresh data profil
             if (index == 2) {
               _profileKey.currentState?.loadUserProfile();
             }

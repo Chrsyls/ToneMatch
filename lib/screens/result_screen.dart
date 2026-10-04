@@ -2,14 +2,17 @@ import 'dart:ui';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart';
 import '../widgets/dynamic_background.dart';
 
 class ResultScreen extends StatefulWidget {
   final String detectedUndertone;
   final String? imagePath;
 
-  const ResultScreen({super.key, required this.detectedUndertone, this.imagePath});
+  const ResultScreen({
+    super.key,
+    required this.detectedUndertone,
+    this.imagePath,
+  });
 
   @override
   State<ResultScreen> createState() => _ResultScreenState();
@@ -18,8 +21,7 @@ class ResultScreen extends StatefulWidget {
 class _ResultScreenState extends State<ResultScreen> {
   List<dynamic> _recommendations = [];
   bool _isLoading = true;
-  String? _errorMessage;
-  final String baseUrl = 'http://192.168.100.68:8000';
+  final String baseUrl = 'http://192.168.11.166:8000'; // Sesuaikan IP Anda
 
   @override
   void initState() {
@@ -29,135 +31,152 @@ class _ResultScreenState extends State<ResultScreen> {
 
   Future<void> _fetchRecommendations() async {
     try {
-      final uri = Uri.parse('$baseUrl/api/v1/recommendations/${widget.detectedUndertone}');
+      final uri = Uri.parse('$baseUrl/api/v1/products?undertone=${widget.detectedUndertone}');
       final response = await http.get(uri);
       if (response.statusCode == 200) {
-        final decodedData = json.decode(response.body);
-        if (decodedData['success'] == true) {
-          setState(() { _recommendations = decodedData['data']; _isLoading = false; });
-        } else {
-          throw Exception(decodedData['error']);
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          setState(() {
+            _recommendations = data['data'] ?? [];
+            _isLoading = false;
+          });
         }
-      } else {
-        throw Exception('Gagal memuat rekomendasi.');
       }
     } catch (e) {
-      setState(() { _errorMessage = e.toString(); _isLoading = false; });
+      setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _saveToFavorites(String productId) async {
+  Future<void> _toggleSaveProduct(String productId, bool isCurrentlySaved) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/v1/favorites'),
-        headers: {"Content-Type": "application/json"},
-        body: json.encode({"user_id": "usr_dummy_01", "product_id": productId}),
-      );
+      // Dummy user ID 'usr_dummy_01'
+      final endpoint = islectedEndpoint(isCurrentlySaved);
+      final response = await endpoint(productId);
+
       if (response.statusCode == 200) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Produk berhasil disimpan ke Favorit! ✨')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(isCurrentlySaved ? 'Produk dihapus dari tersimpan' : 'Produk berhasil disimpan! ❤️')),
+        );
+        _fetchRecommendations(); // Refresh
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal mengubah status simpan')));
     }
   }
 
-  String _formatRupiah(dynamic price) {
-    final currencyFormatter = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
-    double parsedPrice = double.tryParse(price.toString()) ?? 0.0;
-    return currencyFormatter.format(parsedPrice);
+  Function(String) islectedEndpoint(bool isSaved) {
+    if (isSaved) {
+      return (id) => http.delete(Uri.parse('$baseUrl/api/v1/favorites/usr_dummy_01/$id'));
+    } else {
+      return (id) => http.post(
+            Uri.parse('$baseUrl/api/v1/favorites'),
+            headers: {"Content-Type": "application/json"},
+            body: json.encode({"user_id": "usr_dummy_01", "product_id": id}),
+          );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    String undertoneTitle = widget.detectedUndertone.toUpperCase();
+
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent, elevation: 0,
-        iconTheme: const IconThemeData(color: Color(0xFF4A2333)),
-      ),
       body: Stack(
         children: [
-          const DynamicBackground(), // Background Dinamis Aktif!
+          const DynamicBackground(),
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Hasil Analisis', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
-                  const SizedBox(height: 24),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                      child: Container(
-                        width: double.infinity, padding: const EdgeInsets.all(32),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.4), borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: Colors.white.withOpacity(0.6), width: 1.5),
-                        ),
-                        child: Column(
-                          children: [
-                            const Text('Undertone Anda', style: TextStyle(fontSize: 18, color: Color(0xFF7A5C61))),
-                            const SizedBox(height: 8),
-                            Text(
-                              widget.detectedUndertone.toUpperCase(),
-                              style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w900, color: Color(0xFFE91E63), letterSpacing: 2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF4A2333)),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      const Text('Hasil Analisis', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    children: [
+                      // Card Profil Undertone
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.4),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: Colors.white.withOpacity(0.6), width: 1.5),
                             ),
-                          ],
+                            child: Column(
+                              children: [
+                                const Icon(Icons.auto_awesome, size: 40, color: Color(0xFFE91E63)),
+                                const SizedBox(height: 12),
+                                const Text('Undertone Anda Terdeteksi:', style: TextStyle(color: Color(0xFF7A5C61), fontSize: 14)),
+                                const SizedBox(height: 4),
+                                Text(undertoneTitle, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Kulit Anda memiliki rona $undertoneTitle. Warna makeup yang paling cocok adalah yang memiliki basis warna seirama.',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: Color(0xFF7A5C61), fontSize: 13, height: 1.4),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  const Text('Rekomendasi Makeup', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: _isLoading
-                        ? const Center(child: CircularProgressIndicator(color: Color(0xFFE91E63)))
-                        : _errorMessage != null
-                            ? Center(child: Text('Error: $_errorMessage', style: const TextStyle(color: Colors.red)))
-                            : _recommendations.isEmpty
-                                ? const Center(child: Text('Belum ada rekomendasi produk untuk undertone ini.', style: TextStyle(color: Color(0xFF7A5C61))))
-                                : ListView.builder(
-                                    padding: const EdgeInsets.only(top: 0),
-                                    itemCount: _recommendations.length,
-                                    itemBuilder: (context, index) {
-                                      final item = _recommendations[index];
-                                      return Padding(
-                                        padding: const EdgeInsets.only(bottom: 12.0),
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(0.7), borderRadius: BorderRadius.circular(16),
-                                            border: Border.all(color: Colors.white.withOpacity(0.5), width: 1),
-                                          ),
-                                          child: ListTile(
-                                            leading: CircleAvatar(
-                                              backgroundColor: const Color(0xFFE91E63).withOpacity(0.2),
-                                              child: const Icon(Icons.brush, color: Color(0xFFE91E63), size: 20),
-                                            ),
-                                            title: Text(item['product_name'] ?? 'Nama Produk', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF4A2333))),
-                                            subtitle: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                const SizedBox(height: 4),
-                                                Text(item['brand_name'] ?? 'Brand', style: const TextStyle(fontSize: 14, color: Color(0xFF7A5C61))),
-                                                const SizedBox(height: 4),
-                                                Text(_formatRupiah(item['price']), style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFFE91E63))),
-                                              ],
-                                            ),
-                                            trailing: IconButton(
-                                              icon: const Icon(Icons.favorite_border, color: Color(0xFFE91E63)),
-                                              onPressed: () => _saveToFavorites(item['product_id']),
-                                            ),
-                                          ),
+                      const SizedBox(height: 24),
+                      const Text('Rekomendasi Produk Makeup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
+                      const SizedBox(height: 16),
+                      _isLoading
+                          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE91E63)))
+                          : _recommendations.isEmpty
+                              ? const Text('Belum ada rekomendasi produk untuk undertone ini.', style: TextStyle(color: Color(0xFF7A5C61)))
+                              : ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemCount: _recommendations.length,
+                                  itemBuilder: (context, index) {
+                                    final prod = _recommendations[index];
+                                    final isSaved = prod['is_saved'] ?? false;
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.5),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(color: Colors.white, width: 1),
+                                      ),
+                                      child: ListTile(
+                                        leading: Container(
+                                          width: 50, height: 50,
+                                          decoration: BoxDecoration(color: const Color(0xFFFCE4EC), borderRadius: BorderRadius.circular(12)),
+                                          child: const Icon(Icons.brush, color: Color(0xFFE91E63)),
                                         ),
-                                      );
-                                    },
-                                  ),
+                                        title: Text(prod['product_name'] ?? 'Makeup Item', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
+                                        subtitle: Text('${prod['brand']} • Rp ${prod['price'] ?? '0'}', style: const TextStyle(color: Color(0xFF7A5C61), fontSize: 13)),
+                                        trailing: IconButton(
+                                          icon: Icon(isSaved ? Icons.favorite : Icons.favorite_border, color: const Color(0xFFE91E63)),
+                                          onPressed: () => _toggleSaveProduct(prod['product_id'].toString(), isSaved),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                      const SizedBox(height: 40),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],

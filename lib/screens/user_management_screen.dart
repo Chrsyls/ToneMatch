@@ -14,7 +14,7 @@ class UserManagementScreen extends StatefulWidget {
 class _UserManagementScreenState extends State<UserManagementScreen> {
   List<dynamic> _users = [];
   bool _isLoading = true;
-  final String baseUrl = 'http://192.168.100.68:8000';
+  final String baseUrl = 'http://192.168.11.166:8000';
 
   @override
   void initState() {

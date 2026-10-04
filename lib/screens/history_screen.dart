@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../widgets/dynamic_background.dart';
+import 'result_screen.dart'; // Import halaman result
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -15,7 +16,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   List<dynamic> _historyData = [];
   bool _isLoading = true;
   String? _errorMessage;
-  final String baseUrl = 'http://192.168.100.68:8000';
+  final String baseUrl = 'http://192.168.11.166:8000'; // Sesuaikan IP Anda
 
   @override
   void initState() {
@@ -115,55 +116,70 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             itemBuilder: (context, index) {
                               final item = _historyData[index];
                               final historyId = item['history_id'];
-                              final undertone = item['detected_undertone'].toString().toUpperCase();
-                              final score = (item['confidence_score'] * 100).toInt();
+                              final rawUndertone = item['detected_undertone'].toString();
+                              final undertoneDisplay = rawUndertone.toUpperCase();
                               final date = _formatDate(item['created_at']);
                               final imageUrl = item['image_url'] != null ? '$baseUrl/${item['image_url']}' : null;
 
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 16.0),
-                                child: ClipRRect(
+                                child: InkWell(
                                   borderRadius: BorderRadius.circular(20),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(16),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.4),
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(color: Colors.white.withOpacity(0.6), width: 1.5),
+                                  // Navigasi ke ResultScreen saat riwayat diklik
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => ResultScreen(
+                                          detectedUndertone: rawUndertone.toLowerCase(),
+                                          imagePath: item['image_url'], // Kirim path gambar
+                                        ),
                                       ),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            width: 60, height: 60,
-                                            decoration: BoxDecoration(
-                                              color: Colors.white.withOpacity(0.6),
-                                              borderRadius: BorderRadius.circular(12),
+                                    );
+                                  },
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: BackdropFilter(
+                                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.4),
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(color: Colors.white.withOpacity(0.6), width: 1.5),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              width: 60, height: 60,
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withOpacity(0.6),
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: ClipRRect(
+                                                borderRadius: BorderRadius.circular(12),
+                                                child: imageUrl != null 
+                                                  ? Image.network(imageUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.broken_image))
+                                                  : const Icon(Icons.image_outlined, color: Color(0xFFE91E63)),
+                                              ),
                                             ),
-                                            child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(12),
-                                              child: imageUrl != null 
-                                                ? Image.network(imageUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.broken_image))
-                                                : const Icon(Icons.image_outlined, color: Color(0xFFE91E63)),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text('Undertone: $undertoneDisplay', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF4A2333))),
+                                                  const SizedBox(height: 6),
+                                                  Text(date, style: const TextStyle(color: Color(0xFF7A5C61), fontSize: 14)),
+                                                ],
+                                              ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 16),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text('Undertone: $undertone', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF4A2333))),
-                                                const SizedBox(height: 6),
-                                                Text(date, style: const TextStyle(color: Color(0xFF7A5C61), fontSize: 14)),
-                                              ],
+                                            IconButton(
+                                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                              onPressed: () => _deleteHistory(historyId),
                                             ),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                                            onPressed: () => _deleteHistory(historyId),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),

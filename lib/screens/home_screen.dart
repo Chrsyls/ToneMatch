@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -5,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'result_screen.dart';
+import 'camera_screen.dart';
+import '../widgets/dynamic_background.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,20 +18,53 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ImagePicker _picker = ImagePicker();
-  bool _isLoading = false;
-  String _statusMessage = '';
+  final String baseUrl = 'http://192.168.11.166:8000'; // Sesuaikan IP Anda
 
-  Future<void> _uploadImageToMySQL(ImageSource source) async {
+  Future<void> _openCustomCamera() async {
+    final File? capturedImage = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const CameraScreen()),
+    );
+    
+    if (capturedImage != null) {
+      await _processAndUploadImage(XFile(capturedImage.path));
+    }
+  }
+
+  Future<void> _openGallery() async {
+    final XFile? pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      await _processAndUploadImage(pickedFile);
+    }
+  }
+
+  void _showLoadingDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Color(0xFFE91E63)),
+            SizedBox(height: 20),
+            Text(
+              'Menganalisis profil wajah...\nMenyelaraskan skema undertone ✨',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Color(0xFF4A2333), fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _processAndUploadImage(XFile pickedFile) async {
+    _showLoadingDialog();
+
     try {
-      final XFile? pickedFile = await _picker.pickImage(source: source);
-      if (pickedFile == null) return;
-
-      setState(() {
-        _isLoading = true;
-        _statusMessage = 'Menganalisis wajah Anda...';
-      });
-
-      final uri = Uri.parse('http://192.168.100.68:8000/api/v1/analyze/undertone');
+      final uri = Uri.parse('$baseUrl/api/v1/analyze/undertone');
       var request = http.MultipartRequest('POST', uri);
 
       if (kIsWeb) {
@@ -42,17 +78,17 @@ class _HomeScreenState extends State<HomeScreen> {
       var response = await http.Response.fromStream(streamedResponse);
       var responseData = json.decode(response.body);
 
-      setState(() { _isLoading = false; });
+      if (mounted) Navigator.pop(context); // Tutup dialog loading
 
       if (response.statusCode == 200 && responseData['success'] == true) {
-        if (!context.mounted) return;
+        if (!mounted) return;
         _showSuccessDialog(responseData['message'], responseData['data']['undertone'], pickedFile.path);
       } else {
         throw Exception(responseData['error'] ?? 'Gagal menghubungi server.');
       }
     } catch (e) {
-      setState(() { _isLoading = false; });
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) Navigator.pop(context); // Tutup dialog loading jika terjadi error
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -100,16 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFff9a9e), Color(0xFFfecfef), Color(0xFFfdfbfb)],
-                stops: [0.0, 0.5, 1.0],
-              ),
-            ),
-          ),
+          const DynamicBackground(),
           Positioned(
             top: -50, left: -50,
             child: Container(width: 200, height: 200, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.3))),
@@ -156,50 +183,44 @@ class _HomeScreenState extends State<HomeScreen> {
                           style: TextStyle(fontSize: 16, color: Color(0xFF7A5C61), height: 1.5),
                         ),
                         const SizedBox(height: 40),
-                        if (_isLoading) ...[
-                          const CircularProgressIndicator(color: Color(0xFFE91E63)),
-                          const SizedBox(height: 16),
-                          Text(_statusMessage, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF7A5C61))),
-                        ] else ...[
-                          ElevatedButton(
-                            onPressed: () => _uploadImageToMySQL(ImageSource.camera),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFE91E63),
-                              foregroundColor: Colors.white,
-                              elevation: 8,
-                              shadowColor: const Color(0xFFE91E63).withOpacity(0.5),
-                              minimumSize: const Size(double.infinity, 56),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.camera_alt_outlined),
-                                SizedBox(width: 12),
-                                Text('Ambil Foto', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
+                        ElevatedButton(
+                          onPressed: _openCustomCamera,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFE91E63),
+                            foregroundColor: Colors.white,
+                            elevation: 8,
+                            shadowColor: const Color(0xFFE91E63).withOpacity(0.5),
+                            minimumSize: const Size(double.infinity, 56),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           ),
-                          const SizedBox(height: 16),
-                          OutlinedButton(
-                            onPressed: () => _uploadImageToMySQL(ImageSource.gallery),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF4A2333),
-                              side: const BorderSide(color: Colors.white, width: 2),
-                              backgroundColor: Colors.white.withOpacity(0.4),
-                              minimumSize: const Size(double.infinity, 56),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.photo_library_outlined),
-                                SizedBox(width: 12),
-                                Text('Pilih dari Galeri', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.camera_alt_outlined),
+                              SizedBox(width: 12),
+                              Text('Ambil Foto', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            ],
                           ),
-                        ],
+                        ),
+                        const SizedBox(height: 16),
+                        OutlinedButton(
+                          onPressed: _openGallery,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF4A2333),
+                            side: const BorderSide(color: Colors.white, width: 2),
+                            backgroundColor: Colors.white.withOpacity(0.4),
+                            minimumSize: const Size(double.infinity, 56),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.photo_library_outlined),
+                              SizedBox(width: 12),
+                              Text('Pilih dari Galeri', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),

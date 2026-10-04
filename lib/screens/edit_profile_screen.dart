@@ -1,44 +1,82 @@
 import 'dart:ui';
 import 'dart:convert';
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import '../widgets/dynamic_background.dart';
 
 class EditProfileScreen extends StatefulWidget {
-  final String initialName;
-  final String initialEmail;
-  final String? initialAvatarUrl;
-
-  const EditProfileScreen({
-    super.key,
-    required this.initialName,
-    required this.initialEmail,
-    this.initialAvatarUrl,
-  });
+  const EditProfileScreen({super.key});
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
-  late final TextEditingController _nameController;
-  late final TextEditingController _emailController;
-  
-  XFile? _selectedImage;
-  String? _currentAvatarUrl;
-  bool _isAvatarRemoved = false;
-  bool _isSaving = false;
-  final String baseUrl = 'http://192.168.100.68:8000';
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  bool _isLoading = false;
+  final String baseUrl = 'http://192.168.11.166:8000'; // Sesuaikan IP Anda
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.initialName);
-    _emailController = TextEditingController(text: widget.initialEmail);
-    _currentAvatarUrl = widget.initialAvatarUrl;
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    setState(() => _isLoading = true);
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/api/v1/users/usr_dummy_01'));
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        if (data['success'] == true) {
+          final user = data['data'];
+          if (mounted) {
+            setState(() {
+              _nameController.text = user['name'] ?? '';
+              _emailController.text = user['email'] ?? '';
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // Tangani error jaringan jika offline
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _updateProfile() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/v1/users/usr_dummy_01'),
+        headers: {"Content-Type": "application/json"},
+        body: json.encode({
+          "name": _nameController.text,
+          "email": _emailController.text,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profil berhasil diperbarui! ✨')),
+          );
+          Navigator.pop(context, true); // Kembali ke profil
+        }
+      } else {
+        throw Exception('Gagal memperbarui profil');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: Pastikan backend aktif ($e)')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -48,181 +86,125 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  Future<void> _pickImage() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    if (image != null) {
-      setState(() {
-        _selectedImage = image;
-        _isAvatarRemoved = false;
-      });
-    }
-  }
-
-  void _removeAvatar() {
-    setState(() {
-      _selectedImage = null;
-      _currentAvatarUrl = null;
-      _isAvatarRemoved = true;
-    });
-  }
-
-  Future<void> _updateProfile() async {
-    setState(() { _isSaving = true; });
-    try {
-      var request = http.MultipartRequest('PUT', Uri.parse('$baseUrl/api/v1/users/usr_dummy_01'));
-      request.fields['name'] = _nameController.text.trim();
-      request.fields['email'] = _emailController.text.trim();
-      request.fields['remove_avatar'] = _isAvatarRemoved.toString();
-
-      if (_selectedImage != null) {
-        if (kIsWeb) {
-          final bytes = await _selectedImage!.readAsBytes();
-          request.files.add(http.MultipartFile.fromBytes('avatar', bytes, filename: 'avatar.jpg'));
-        } else {
-          request.files.add(await http.MultipartFile.fromPath('avatar', _selectedImage!.path));
-        }
-      }
-
-      var streamedResponse = await request.send();
-      var response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode == 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profil & Kredensial berhasil diperbarui! ✨')));
-          Navigator.pop(context, true);
-        }
-      } else {
-        final errorData = json.decode(response.body);
-        throw Exception(errorData['error'] ?? 'Terjadi kesalahan pada server.');
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-    } finally {
-      if (mounted) setState(() { _isSaving = false; });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    ImageProvider? avatarProvider;
-    if (_selectedImage != null) {
-      avatarProvider = kIsWeb ? NetworkImage(_selectedImage!.path) : FileImage(File(_selectedImage!.path)) as ImageProvider;
-    } else if (_currentAvatarUrl != null && _currentAvatarUrl!.isNotEmpty && !_isAvatarRemoved) {
-      avatarProvider = NetworkImage('$baseUrl/$_currentAvatarUrl');
-    }
-
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text('Edit Profil', style: TextStyle(color: Color(0xFF4A2333), fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Color(0xFF4A2333)),
-      ),
       body: Stack(
         children: [
-          const DynamicBackground(), // Background Dinamis Aktif!
+          const DynamicBackground(),
           SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(32),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: Container(
-                      padding: const EdgeInsets.all(28.0),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.45),
-                        borderRadius: BorderRadius.circular(32),
-                        border: Border.all(color: Colors.white.withOpacity(0.6), width: 1.5),
+            child: Column(
+              children: [
+                // Header Bar
+                Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF4A2333)),
+                        onPressed: () => Navigator.pop(context),
                       ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Stack(
-                            children: [
-                              Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  boxShadow: [BoxShadow(color: const Color(0xFFE91E63).withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 8))],
-                                ),
-                                child: CircleAvatar(
-                                  radius: 55,
-                                  backgroundColor: const Color(0xFFE0E0E0),
-                                  backgroundImage: avatarProvider,
-                                  child: avatarProvider == null ? const Icon(Icons.person, size: 70, color: Colors.white) : null,
-                                ),
-                              ),
-                              Positioned(
-                                bottom: 0, right: 0,
-                                child: InkWell(
-                                  onTap: _pickImage,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(10),
+                      const Text('Edit Profil', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: _isLoading && _nameController.text.isEmpty
+                      ? const Center(child: CircularProgressIndicator(color: Color(0xFFE91E63)))
+                      : ListView(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          children: [
+                            const SizedBox(height: 20),
+                            // Avatar Foto Profil
+                            Center(
+                              child: Stack(
+                                children: [
+                                  Container(
+                                    width: 100,
+                                    height: 100,
                                     decoration: BoxDecoration(
-                                      shape: BoxShape.circle, color: const Color(0xFFE91E63),
-                                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 6, offset: const Offset(0, 3))],
+                                      shape: BoxShape.circle,
+                                      gradient: const LinearGradient(colors: [Color(0xFFE91E63), Color(0xFFff9a9e)]),
+                                      boxShadow: [BoxShadow(color: const Color(0xFFE91E63).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
                                     ),
-                                    child: const Icon(Icons.camera_alt, size: 18, color: Colors.white),
+                                    child: const Icon(Icons.person, size: 50, color: Colors.white),
+                                  ),
+                                  Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF4A2333)),
+                                      child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 40),
+                            // Glassmorphism Form Card
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(24),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                                child: Container(
+                                  padding: const EdgeInsets.all(24),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.4),
+                                    borderRadius: BorderRadius.circular(24),
+                                    border: Border.all(color: Colors.white.withOpacity(0.6), width: 1.5),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text('Nama Lengkap', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7A5C61))),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: _nameController,
+                                        decoration: InputDecoration(
+                                          filled: true,
+                                          fillColor: Colors.white.withOpacity(0.6),
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                                          prefixIcon: const Icon(Icons.person_outline, color: Color(0xFFE91E63)),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      const Text('Email', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7A5C61))),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: _emailController,
+                                        decoration: InputDecoration(
+                                          filled: true,
+                                          fillColor: Colors.white.withOpacity(0.6),
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                                          prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFFE91E63)),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          if (_selectedImage != null || (_currentAvatarUrl != null && _currentAvatarUrl!.isNotEmpty && !_isAvatarRemoved))
-                            TextButton.icon(
-                              onPressed: _removeAvatar,
-                              icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
-                              label: const Text('Hapus Foto Profil', style: TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.bold)),
-                            )
-                          else
-                            const Text('Ketuk ikon kamera untuk mengganti foto', style: TextStyle(fontSize: 13, color: Color(0xFF7A5C61), fontWeight: FontWeight.w500)),
-                          const SizedBox(height: 24),
-                          TextField(
-                            controller: _nameController,
-                            style: const TextStyle(color: Color(0xFF4A2333), fontWeight: FontWeight.w600),
-                            decoration: InputDecoration(
-                              labelText: 'Nama Lengkap', labelStyle: const TextStyle(color: Color(0xFF7A5C61)),
-                              prefixIcon: const Icon(Icons.person_outline, color: Color(0xFFE91E63)),
-                              filled: true, fillColor: Colors.white.withOpacity(0.6),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE91E63), width: 1.5)),
                             ),
-                          ),
-                          const SizedBox(height: 16),
-                          TextField(
-                            controller: _emailController,
-                            style: const TextStyle(color: Color(0xFF4A2333), fontWeight: FontWeight.w600),
-                            decoration: InputDecoration(
-                              labelText: 'Email Kredensial', labelStyle: const TextStyle(color: Color(0xFF7A5C61)),
-                              prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFFE91E63)),
-                              filled: true, fillColor: Colors.white.withOpacity(0.6),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE91E63), width: 1.5)),
+                            const SizedBox(height: 40),
+                            // Tombol Simpan
+                            ElevatedButton(
+                              onPressed: _isLoading ? null : _updateProfile,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFE91E63),
+                                foregroundColor: Colors.white,
+                                elevation: 8,
+                                shadowColor: const Color(0xFFE91E63).withOpacity(0.5),
+                                minimumSize: const Size(double.infinity, 56),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                  : const Text('Simpan Perubahan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                             ),
-                          ),
-                          const SizedBox(height: 32),
-                          ElevatedButton(
-                            onPressed: _isSaving ? null : _updateProfile,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFE91E63), foregroundColor: Colors.white,
-                              elevation: 6, shadowColor: const Color(0xFFE91E63).withOpacity(0.4),
-                              minimumSize: const Size(double.infinity, 54),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
-                            child: _isSaving
-                                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                                : const Text('Simpan Perubahan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                          ],
+                        ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
