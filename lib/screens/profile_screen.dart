@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -16,9 +17,12 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class ProfileScreenState extends State<ProfileScreen> {
-  Map<String, dynamic>? _userData;
+  static Map<String, dynamic>? _userData;
+  static String? _localImagePath; 
+  static bool _isEditedLocally = false; 
+
   bool _isLoading = true;
-  final String baseUrl = 'http://192.168.11.166:8000'; // Sesuaikan IP Anda
+  final String baseUrl = 'http://192.168.100.68:8000'; // IP Anda
 
   @override
   void initState() {
@@ -27,6 +31,11 @@ class ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> loadUserProfile() async {
+    if (_isEditedLocally) {
+      setState(() => _isLoading = false);
+      return; 
+    }
+
     setState(() => _isLoading = true);
     try {
       final response = await http.get(Uri.parse('$baseUrl/api/v1/users/usr_dummy_01'));
@@ -35,7 +44,9 @@ class ProfileScreenState extends State<ProfileScreen> {
         if (decoded['success'] == true) {
           if (mounted) {
             setState(() {
-              _userData = decoded['data'];
+              if (!_isEditedLocally) {
+                _userData = decoded['data'];
+              }
               _isLoading = false;
             });
           }
@@ -48,7 +59,7 @@ class ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (_isLoading && _userData == null) {
       return const Scaffold(
         body: Stack(
           children: [
@@ -74,7 +85,6 @@ class ProfileScreenState extends State<ProfileScreen> {
                 const Text('Profil Saya', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
                 const SizedBox(height: 24),
                 
-                // Kartu Informasi Profil
                 ClipRRect(
                   borderRadius: BorderRadius.circular(24),
                   child: BackdropFilter(
@@ -92,9 +102,21 @@ class ProfileScreenState extends State<ProfileScreen> {
                             width: 70, height: 70,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              gradient: const LinearGradient(colors: [Color(0xFFE91E63), Color(0xFFff9a9e)]),
+                              image: _localImagePath != null 
+                                ? DecorationImage(image: FileImage(File(_localImagePath!)), fit: BoxFit.cover) 
+                                : (_userData?['avatar_url'] != null
+                                    ? DecorationImage(
+                                        image: NetworkImage('$baseUrl/${_userData!['avatar_url']}'),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null),
+                              gradient: (_localImagePath == null && _userData?['avatar_url'] == null) 
+                                ? const LinearGradient(colors: [Color(0xFFE91E63), Color(0xFFff9a9e)]) 
+                                : null,
                             ),
-                            child: const Icon(Icons.person, size: 35, color: Colors.white),
+                            child: (_localImagePath == null && _userData?['avatar_url'] == null) 
+                              ? const Icon(Icons.person, size: 35, color: Colors.white) 
+                              : null,
                           ),
                           const SizedBox(width: 16),
                           Expanded(
@@ -126,7 +148,6 @@ class ProfileScreenState extends State<ProfileScreen> {
                 const Text('Menu Utama', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
                 const SizedBox(height: 12),
 
-                // Tombol Edit Profil
                 _buildMenuTile(
                   icon: Icons.edit_outlined,
                   title: 'Edit Profil',
@@ -135,11 +156,32 @@ class ProfileScreenState extends State<ProfileScreen> {
                       context,
                       MaterialPageRoute(builder: (context) => const EditProfileScreen()),
                     );
-                    if (result == true) loadUserProfile();
+                    
+                    if (result != null && result is Map<String, dynamic>) {
+                      setState(() {
+                        _isEditedLocally = true; 
+                        
+                        if (_userData == null) _userData = {};
+                        _userData!['name'] = result['name'];
+                        _userData!['email'] = result['email'];
+                        
+                        // PERBAIKAN: Jika user menghapus/reset gambar
+                        if (result['isAvatarRemoved'] == true) {
+                           _userData!['avatar_url'] = null;
+                           _localImagePath = null;
+                        } else {
+                           if (result['serverAvatarUrl'] != null) {
+                              _userData!['avatar_url'] = result['serverAvatarUrl'];
+                           }
+                           if (result['imagePath'] != null) {
+                              _localImagePath = result['imagePath'];
+                           }
+                        }
+                      });
+                    }
                   },
                 ),
 
-                // Tombol Produk Tersimpan (Wishlist)
                 _buildMenuTile(
                   icon: Icons.favorite_outline,
                   title: 'Produk Tersimpan',
@@ -148,7 +190,6 @@ class ProfileScreenState extends State<ProfileScreen> {
                   },
                 ),
 
-                // Menu Khusus Admin (CRUD Produk)
                 if (role == 'admin' || role == 'super_admin') ...[
                   const SizedBox(height: 16),
                   const Text('Panel Admin', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
@@ -162,7 +203,6 @@ class ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ],
 
-                // Menu Khusus Super Admin (Analytics & User Management)
                 if (role == 'super_admin') ...[
                   _buildMenuTile(
                     icon: Icons.supervisor_account_outlined,

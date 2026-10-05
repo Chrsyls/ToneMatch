@@ -13,7 +13,7 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
-  final String baseUrl = 'http://192.168.11.166:8000'; // Sesuaikan IP Anda
+  final String baseUrl = 'http://192.168.100.68:8000'; // Sesuaikan IP Anda
 
   // GlobalKey untuk mengontrol state ProfileScreen dari luar
   final GlobalKey<ProfileScreenState> _profileKey = GlobalKey<ProfileScreenState>();

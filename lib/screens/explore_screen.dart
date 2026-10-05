@@ -15,7 +15,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
   List<dynamic> _products = [];
   bool _isLoading = true;
   String _selectedFilter = 'all';
-  final String baseUrl = 'http://192.168.11.166:8000';
+  final String baseUrl = 'http://192.168.100.68:8000';
 
   @override
   void initState() {

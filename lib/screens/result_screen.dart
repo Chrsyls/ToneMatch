@@ -21,7 +21,7 @@ class ResultScreen extends StatefulWidget {
 class _ResultScreenState extends State<ResultScreen> {
   List<dynamic> _recommendations = [];
   bool _isLoading = true;
-  final String baseUrl = 'http://192.168.11.166:8000'; // Sesuaikan IP Anda
+  final String baseUrl = 'http://192.168.100.68:8000'; // IP Baru Anda
 
   @override
   void initState() {
@@ -30,49 +30,54 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   Future<void> _fetchRecommendations() async {
+    setState(() => _isLoading = true);
     try {
       final uri = Uri.parse('$baseUrl/api/v1/products?undertone=${widget.detectedUndertone}');
       final response = await http.get(uri);
+      
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true) {
           setState(() {
             _recommendations = data['data'] ?? [];
-            _isLoading = false;
           });
         }
       }
     } catch (e) {
-      setState(() => _isLoading = false);
+      debugPrint("Gagal memuat rekomendasi: $e");
+    } finally {
+      // PENYELESAIAN BUG: Pastikan loading selalu dimatikan walau gagal/kosong
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _toggleSaveProduct(String productId, bool isCurrentlySaved) async {
     try {
-      // Dummy user ID 'usr_dummy_01'
-      final endpoint = islectedEndpoint(isCurrentlySaved);
-      final response = await endpoint(productId);
+      final endpoint = _getFavoritesEndpoint(isCurrentlySaved, productId);
+      final response = await endpoint;
 
       if (response.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(isCurrentlySaved ? 'Produk dihapus dari tersimpan' : 'Produk berhasil disimpan! ❤️')),
         );
-        _fetchRecommendations(); // Refresh
+        _fetchRecommendations(); // Refresh status ikon hati
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal mengubah status simpan')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal mengubah status simpan')));
     }
   }
 
-  Function(String) islectedEndpoint(bool isSaved) {
+  Future<http.Response> _getFavoritesEndpoint(bool isSaved, String id) {
     if (isSaved) {
-      return (id) => http.delete(Uri.parse('$baseUrl/api/v1/favorites/usr_dummy_01/$id'));
+      return http.delete(Uri.parse('$baseUrl/api/v1/favorites/usr_dummy_01/$id'));
     } else {
-      return (id) => http.post(
-            Uri.parse('$baseUrl/api/v1/favorites'),
-            headers: {"Content-Type": "application/json"},
-            body: json.encode({"user_id": "usr_dummy_01", "product_id": id}),
-          );
+      return http.post(
+        Uri.parse('$baseUrl/api/v1/favorites'),
+        headers: {"Content-Type": "application/json"},
+        body: json.encode({"user_id": "usr_dummy_01", "product_id": id}),
+      );
     }
   }
 
@@ -137,10 +142,18 @@ class _ResultScreenState extends State<ResultScreen> {
                       const SizedBox(height: 24),
                       const Text('Rekomendasi Produk Makeup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
                       const SizedBox(height: 16),
+                      
+                      // Area Rekomendasi
                       _isLoading
-                          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE91E63)))
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 40),
+                              child: Center(child: CircularProgressIndicator(color: Color(0xFFE91E63))),
+                            )
                           : _recommendations.isEmpty
-                              ? const Text('Belum ada rekomendasi produk untuk undertone ini.', style: TextStyle(color: Color(0xFF7A5C61)))
+                              ? const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 20),
+                                  child: Text('Belum ada rekomendasi produk untuk undertone ini.', style: TextStyle(color: Color(0xFF7A5C61))),
+                                )
                               : ListView.builder(
                                   shrinkWrap: true,
                                   physics: const NeverScrollableScrollPhysics(),

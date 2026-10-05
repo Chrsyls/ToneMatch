@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'dart:ui';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import '../widgets/dynamic_background.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -14,8 +16,15 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
-  bool _isLoading = false;
-  final String baseUrl = 'http://192.168.11.166:8000'; // Sesuaikan IP Anda
+  
+  bool _isFetching = true; 
+  bool _isSaving = false;  
+  
+  File? _profileImage;     
+  String? _serverAvatarUrl; // Menyimpan URL gambar dari backend
+  bool _isAvatarRemoved = false; // Flag jika tombol hapus ditekan
+  
+  final String baseUrl = 'http://192.168.100.68:8000'; // IP Anda
 
   @override
   void initState() {
@@ -24,7 +33,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _loadUserData() async {
-    setState(() => _isLoading = true);
+    setState(() => _isFetching = true);
     try {
       final res = await http.get(Uri.parse('$baseUrl/api/v1/users/usr_dummy_01'));
       if (res.statusCode == 200) {
@@ -35,59 +44,93 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             setState(() {
               _nameController.text = user['name'] ?? '';
               _emailController.text = user['email'] ?? '';
+              _serverAvatarUrl = user['avatar_url']; // Ambil URL gambar saat ini
+              _isAvatarRemoved = false;
             });
           }
         }
       }
     } catch (e) {
-      // Tangani error jaringan jika offline
+      debugPrint("Error loading user: $e");
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isFetching = false);
     }
   }
 
-  Future<void> _updateProfile() async {
-    setState(() => _isLoading = true);
+  Future<void> _pickProfileImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    
+    if (image != null) {
+      setState(() {
+        _profileImage = File(image.path);
+        _isAvatarRemoved = false; // Batal hapus jika milih foto baru
+      });
+    }
+  }
+
+  Future<void> _updateProfile({bool isReset = false}) async {
+    setState(() => _isSaving = true);
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/api/v1/users/usr_dummy_01'),
-        headers: {"Content-Type": "application/json"},
-        body: json.encode({
-          "name": _nameController.text,
-          "email": _emailController.text,
-        }),
-      );
+      var uri = Uri.parse('$baseUrl/api/v1/users/usr_dummy_01');
+      var request = http.MultipartRequest('PUT', uri);
+
+      if (isReset) {
+        // DATA RESET DEFAULT
+        request.fields['name'] = "Alvito Aryo";
+        request.fields['email'] = "test@tonematch.app";
+        request.fields['remove_avatar'] = "true";
+      } else {
+        // DATA EDIT NORMAL
+        request.fields['name'] = _nameController.text;
+        request.fields['email'] = _emailController.text;
+        request.fields['remove_avatar'] = _isAvatarRemoved ? "true" : "false";
+
+        if (_profileImage != null && !_isAvatarRemoved) {
+          request.files.add(await http.MultipartFile.fromPath('avatar', _profileImage!.path));
+        }
+      }
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
+        var responseData = json.decode(response.body);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Profil berhasil diperbarui! ✨')),
+            SnackBar(content: Text(isReset ? 'Kredensial direset ke default! 🐛' : 'Profil berhasil diperbarui! ✨')),
           );
-          Navigator.pop(context, true); // Kembali ke profil
+          
+          Navigator.pop(context, {
+            "name": isReset ? "Alvito Aryo" : _nameController.text,
+            "email": isReset ? "test@tonematch.app" : _emailController.text,
+            "imagePath": isReset || _isAvatarRemoved ? null : _profileImage?.path,
+            "serverAvatarUrl": responseData['avatar_url'],
+            "isAvatarRemoved": isReset || _isAvatarRemoved
+          }); 
         }
       } else {
-        throw Exception('Gagal memperbarui profil');
+        throw Exception('Gagal memperbarui profil: ${response.body}');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: Pastikan backend aktif ($e)')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    super.dispose();
+  // Fungsi Helper untuk menentukan gambar mana yang akan dirender
+  ImageProvider? _getAvatarImage() {
+    if (_isAvatarRemoved) return null;
+    if (_profileImage != null) return FileImage(_profileImage!);
+    if (_serverAvatarUrl != null) return NetworkImage('$baseUrl/$_serverAvatarUrl');
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
+    bool hasImage = _getAvatarImage() != null;
+
     return Scaffold(
       body: Stack(
         children: [
@@ -95,7 +138,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           SafeArea(
             child: Column(
               children: [
-                // Header Bar
                 Padding(
                   padding: const EdgeInsets.all(20.0),
                   child: Row(
@@ -109,40 +151,72 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ),
                 Expanded(
-                  child: _isLoading && _nameController.text.isEmpty
+                  child: _isFetching
                       ? const Center(child: CircularProgressIndicator(color: Color(0xFFE91E63)))
                       : ListView(
                           padding: const EdgeInsets.symmetric(horizontal: 24),
                           children: [
                             const SizedBox(height: 20),
-                            // Avatar Foto Profil
+                            // Avatar Foto Profil Dinamis
                             Center(
                               child: Stack(
                                 children: [
-                                  Container(
-                                    width: 100,
-                                    height: 100,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      gradient: const LinearGradient(colors: [Color(0xFFE91E63), Color(0xFFff9a9e)]),
-                                      boxShadow: [BoxShadow(color: const Color(0xFFE91E63).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
+                                  GestureDetector(
+                                    onTap: _pickProfileImage,
+                                    child: Container(
+                                      width: 110,
+                                      height: 110,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        image: hasImage 
+                                            ? DecorationImage(image: _getAvatarImage()!, fit: BoxFit.cover) 
+                                            : null,
+                                        gradient: !hasImage 
+                                            ? const LinearGradient(colors: [Color(0xFFE91E63), Color(0xFFff9a9e)])
+                                            : null,
+                                        boxShadow: [BoxShadow(color: const Color(0xFFE91E63).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
+                                      ),
+                                      child: !hasImage 
+                                          ? const Icon(Icons.person, size: 50, color: Colors.white)
+                                          : null,
                                     ),
-                                    child: const Icon(Icons.person, size: 50, color: Colors.white),
                                   ),
+                                  // Icon Kamera (Edit)
                                   Positioned(
                                     bottom: 0,
-                                    right: 0,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF4A2333)),
-                                      child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                                    right: 5,
+                                    child: GestureDetector(
+                                      onTap: _pickProfileImage,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF4A2333)),
+                                        child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                                      ),
                                     ),
                                   ),
+                                  // TOMBOL HAPUS FOTO (Hanya muncul jika ada foto)
+                                  if (hasImage)
+                                    Positioned(
+                                      top: 0,
+                                      right: 5,
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _profileImage = null;
+                                            _isAvatarRemoved = true;
+                                          });
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.all(6),
+                                          decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.redAccent, border: Border.all(color: Colors.white, width: 2)),
+                                          child: const Icon(Icons.delete, size: 14, color: Colors.white),
+                                        ),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
                             const SizedBox(height: 40),
-                            // Glassmorphism Form Card
                             ClipRRect(
                               borderRadius: BorderRadius.circular(24),
                               child: BackdropFilter(
@@ -186,9 +260,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               ),
                             ),
                             const SizedBox(height: 40),
-                            // Tombol Simpan
                             ElevatedButton(
-                              onPressed: _isLoading ? null : _updateProfile,
+                              onPressed: _isSaving ? null : () => _updateProfile(isReset: false),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFFE91E63),
                                 foregroundColor: Colors.white,
@@ -197,10 +270,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                 minimumSize: const Size(double.infinity, 56),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                               ),
-                              child: _isLoading
+                              child: _isSaving
                                   ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                                   : const Text('Simpan Perubahan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                             ),
+                            
+                            // TOMBOL DEBUG: RESET KREDENSIAL DEFAULT
+                            const SizedBox(height: 24),
+                            TextButton.icon(
+                              onPressed: _isSaving ? null : () => _updateProfile(isReset: true),
+                              icon: const Icon(Icons.bug_report, color: Colors.grey),
+                              label: const Text('Reset Kredensial (Debug)', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                              style: TextButton.styleFrom(
+                                backgroundColor: Colors.white.withOpacity(0.3),
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Colors.grey, width: 1)),
+                              ),
+                            ),
+                            const SizedBox(height: 40),
                           ],
                         ),
                 ),
