@@ -1,4 +1,3 @@
-// lib/screens/camera_screen.dart
 import 'dart:io';
 import 'dart:ui';
 import 'package:camera/camera.dart';
@@ -42,7 +41,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
 
         _controller = CameraController(
           selectedCamera,
-          ResolutionPreset.medium,
+          ResolutionPreset.medium, // Resolusi medium optimal untuk scanning frame cepat
           enableAudio: false,
           imageFormatGroup: ImageFormatGroup.yuv420,
         );
@@ -57,7 +56,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
         _controller!.startImageStream((CameraImage image) {
           if (_isProcessing) return;
           frameCount++;
-          if (frameCount % 10 != 0) return;
+          if (frameCount % 10 != 0) return; // Proses tiap 10 frame untuk cegah lag
 
           _isProcessing = true;
           _checkLightingAndFace(image);
@@ -78,30 +77,33 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
       }
       double avgLuminance = yTotal / (yBytes.length / 20);
       
-      // Melonggarkan batas bawah pencahayaan agar lebih toleran di dalam ruangan
+      // Batas cahaya yang aman
       bool isLightingGood = avgLuminance > 50 && avgLuminance < 220; 
 
-      // 2. CEK WAJAH (Chrominance - U & V)
+      // 2. CEK WAJAH KETAT (Chrominance - U & V)
       bool isFaceDetected = false;
 
       if (image.planes.length >= 3) {
         final uBytes = image.planes[1].bytes;
         final vBytes = image.planes[2].bytes;
 
-        // Memindai seluruh area tengah gambar
-        int startIdx = (uBytes.length * 0.2).toInt();
-        int endIdx = (uBytes.length * 0.8).toInt();
+        // FOKUS AREA: Hanya memindai 40% area di tengah persis (menghindari baju dan tembok di pinggir)
+        int startIdx = (uBytes.length * 0.3).toInt();
+        int endIdx = (uBytes.length * 0.7).toInt();
 
         int skinPixelCount = 0;
         int totalSampledPixels = 0;
 
-        for (int i = startIdx; i < endIdx; i += 10) {
+        // Sampling lebih rapat (tiap 5 piksel) agar akurasi di tengah oval lebih tajam
+        for (int i = startIdx; i < endIdx; i += 5) {
           int u = uBytes[i];
           int v = vBytes[i];
 
-          // Rentang pendeteksian kulit yang dilonggarkan
-          // Mencakup warna kulit lebih luas dan mengatasi bias warna rambut
-          if (v >= 130 && v <= 180 && u >= 75 && u <= 135) {
+          // ALGORITMA BARU: Membedakan benda mati dan kulit
+          // - V (Rona hangat/merah) di rentang 132-175
+          // - U (Rona dingin/biru) di rentang 75-130
+          // - (v - u >= 10): Mencegah tembok, pintu, atau benda netral lolos
+          if (v >= 132 && v <= 175 && u >= 75 && u <= 130 && (v - u >= 10)) {
             skinPixelCount++;
           }
           totalSampledPixels++;
@@ -109,12 +111,11 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
 
         double skinPercentage = (skinPixelCount / totalSampledPixels) * 100;
         
-        // Cukup 15% dari area oval terdeteksi memiliki warna kulit
-        // (Rambut hitam, bayangan, atau baju tidak akan masuk hitungan)
-        isFaceDetected = skinPercentage > 15.0; 
+        // Syarat: Minimal 20% isi tengah oval harus kulit, dan tidak boleh dalam kondisi gelap gulita (avgLuminance > 40)
+        isFaceDetected = skinPercentage > 20.0 && avgLuminance > 40.0; 
       }
 
-      // 3. LOGIKA INSTRUKSI
+      // 3. LOGIKA INSTRUKSI UI
       String status = '';
       if (!isFaceDetected) {
         status = 'Wajah tidak terdeteksi. Posisikan ke dalam oval.';
@@ -136,7 +137,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
         });
       }
     } catch (e) {
-      // Abaikan
+      // Abaikan jika frame sedang diputar/rusak
     } finally {
       _isProcessing = false;
     }
@@ -195,7 +196,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Tampilan Kamera
+          // 1. Tampilan Kamera (Scaled Anti Distorsi)
           Transform.scale(
             scale: scale,
             child: Center(
