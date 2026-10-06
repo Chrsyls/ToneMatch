@@ -10,8 +10,6 @@ app = FastAPI()
 
 # Memastikan folder uploads ada
 os.makedirs("uploads", exist_ok=True)
-
-# Membuka akses folder "uploads" agar bisa diakses oleh Flutter via URL
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 def get_db_connection():
@@ -22,16 +20,13 @@ def get_db_connection():
         database="tonematch_db"
     )
 
-# Inisialisasi struktur database otomatis
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        # Memastikan ENUM role mendukung super_admin, admin, user
         cursor.execute("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(255)")
         
-        # Membuat tabel makeup_products dengan struktur langsung yang stabil
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS makeup_products (
                 product_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -86,24 +81,21 @@ def get_recommendations(undertone: str):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        
-        query = """
-            SELECT product_id, name AS product_name, price, brand 
-            FROM makeup_products 
-            WHERE target_undertone = %s OR target_undertone = 'neutral'
-            LIMIT 10
-        """
+        query = "SELECT product_id, name AS product_name, price, brand FROM makeup_products WHERE target_undertone = %s OR target_undertone = 'neutral' LIMIT 10"
         cursor.execute(query, (undertone.lower(),))
         products = cursor.fetchall()
         
+        # PERBAIKAN: Konversi DECIMAL ke Float untuk menghindari JSON error 500
+        for p in products:
+            if p.get('price') is not None:
+                p['price'] = float(p['price'])
+                
         cursor.close()
         conn.close()
-        
         return {"success": True, "data": products}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- PRODUK: GET ALL PRODUCTS (Sinkronisasi Admin & User) ---
 @app.get("/api/v1/products")
 def get_all_products():
     try:
@@ -112,13 +104,18 @@ def get_all_products():
         query = "SELECT product_id, name AS product_name, brand, price, target_undertone AS undertone FROM makeup_products ORDER BY product_id DESC"
         cursor.execute(query)
         products = cursor.fetchall()
+        
+        # PERBAIKAN: Konversi DECIMAL ke Float
+        for p in products:
+            if p.get('price') is not None:
+                p['price'] = float(p['price'])
+                
         cursor.close()
         conn.close()
         return {"success": True, "data": products}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- ADMIN: TAMBAH PRODUK ---
 @app.post("/api/v1/admin/products")
 async def add_product(data: dict):
     try:
@@ -138,7 +135,6 @@ async def add_product(data: dict):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- ADMIN: UPDATE PRODUK ---
 @app.put("/api/v1/admin/products/{product_id}")
 async def update_product(product_id: int, data: dict):
     try:
@@ -158,7 +154,6 @@ async def update_product(product_id: int, data: dict):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- ADMIN: HAPUS PRODUK ---
 @app.delete("/api/v1/admin/products/{product_id}")
 def delete_product(product_id: int):
     try:
@@ -188,7 +183,6 @@ def get_history(user_id: str):
                 
         cursor.close()
         conn.close()
-        
         return {"success": True, "data": histories}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
@@ -198,7 +192,6 @@ def delete_history(history_id: str):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
         cursor.execute("SELECT image_url FROM classification_histories WHERE history_id = %s", (history_id,))
         row = cursor.fetchone()
         if row and row[0] and os.path.exists(row[0]):
@@ -206,7 +199,6 @@ def delete_history(history_id: str):
             
         cursor.execute("DELETE FROM classification_histories WHERE history_id = %s", (history_id,))
         conn.commit()
-        
         cursor.close()
         conn.close()
         return {"success": True, "message": "Riwayat berhasil dihapus"}
@@ -226,6 +218,12 @@ def get_favorites(user_id: str):
         """
         cursor.execute(query, (user_id,))
         favorites = cursor.fetchall()
+        
+        # PERBAIKAN: Konversi DECIMAL ke Float
+        for f in favorites:
+            if f.get('price') is not None:
+                f['price'] = float(f['price'])
+                
         cursor.close()
         conn.close()
         return {"success": True, "data": favorites}
@@ -341,16 +339,12 @@ def get_admin_stats():
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        
         cursor.execute("SELECT COUNT(*) AS total_users FROM users")
         users_count = cursor.fetchone()['total_users']
-        
         cursor.execute("SELECT COUNT(*) AS total_history FROM classification_histories")
         history_count = cursor.fetchone()['total_history']
-        
         cursor.execute("SELECT COUNT(*) AS total_products FROM makeup_products")
         products_count = cursor.fetchone()['total_products']
-        
         cursor.close()
         conn.close()
         return {

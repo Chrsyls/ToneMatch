@@ -13,6 +13,7 @@ class AdminProductScreen extends StatefulWidget {
 
 class _AdminProductScreenState extends State<AdminProductScreen> {
   List<dynamic> _products = [];
+  bool _isLoading = true;
   final String baseUrl = 'http://10.4.89.111:8000';
 
   @override
@@ -22,16 +23,23 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
   }
 
   Future<void> _fetchProducts() async {
+    setState(() => _isLoading = true);
     try {
       final res = await http.get(Uri.parse('$baseUrl/api/v1/products'));
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
         if (data['success'] == true) {
-          setState(() => _products = data['data'] ?? []);
+          setState(() {
+            _products = data['data'] ?? [];
+            _isLoading = false;
+          });
         }
+      } else {
+        setState(() => _isLoading = false);
       }
     } catch (e) {
       debugPrint('Error fetching products: $e');
+      setState(() => _isLoading = false);
     }
   }
 
@@ -106,7 +114,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                     }
 
                     if (mounted) Navigator.pop(context);
-                    _fetchProducts();
+                    _fetchProducts(); // Sinkronisasi ulang data terbaru
                   },
                   child: const Text('Simpan Produk', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
@@ -148,28 +156,32 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                   ),
                 ),
                 Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    itemCount: _products.length,
-                    itemBuilder: (context, index) {
-                      final p = _products[index];
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        child: ListTile(
-                          title: Text(p['product_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text('${p['brand'] ?? '-'} • Rp ${p['price'] ?? 0} • ${p['undertone'] ?? '-'}'),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showAddEditModal(product: p)),
-                              IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteProduct(p['product_id'].toString())),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                  child: _isLoading 
+                      ? const Center(child: CircularProgressIndicator(color: Color(0xFFE91E63)))
+                      : _products.isEmpty 
+                          ? const Center(child: Text("Belum ada produk tersimpan.", style: TextStyle(color: Colors.black54)))
+                          : ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              itemCount: _products.length,
+                              itemBuilder: (context, index) {
+                                final p = _products[index];
+                                return Card(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  child: ListTile(
+                                    title: Text(p['product_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    subtitle: Text('${p['brand'] ?? '-'} • Rp ${p['price'] ?? 0} • ${p['undertone'] ?? '-'}'),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showAddEditModal(product: p)),
+                                        IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteProduct(p['product_id'].toString())),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                 ),
               ],
             ),
