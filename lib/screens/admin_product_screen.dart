@@ -13,7 +13,7 @@ class AdminProductScreen extends StatefulWidget {
 
 class _AdminProductScreenState extends State<AdminProductScreen> {
   List<dynamic> _products = [];
-  final String baseUrl = 'http://10.4.89.111:8000'; // Sesuaikan IP Anda
+  final String baseUrl = 'http://10.4.89.111:8000';
 
   @override
   void initState() {
@@ -29,7 +29,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
         if (data['success'] == true) setState(() => _products = data['data'] ?? []);
       }
     } catch (e) {
-      // Error handling
+      debugPrint('Error fetching products: $e');
     }
   }
 
@@ -46,53 +46,64 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
         return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(product == null ? 'Tambah Produk Baru' : 'Edit Produk', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
-              const SizedBox(height: 16),
-              TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nama Produk')),
-              const SizedBox(height: 12),
-              TextField(controller: brandController, decoration: const InputDecoration(labelText: 'Brand')),
-              const SizedBox(height: 12),
-              TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Harga (Rp)')),
-              const SizedBox(height: 16),
-              const Text('Target Undertone:', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7A5C61))),
-              DropdownButtonFormField<String>(
-                value: undertone,
-                items: const [
-                  DropdownMenuItem(value: 'warm', child: Text('Warm')),
-                  DropdownMenuItem(value: 'cool', child: Text('Cool')),
-                  DropdownMenuItem(value: 'neutral', child: Text('Neutral')),
-                ],
-                onChanged: (val) => undertone = val ?? 'warm',
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63), minimumSize: const Size(double.infinity, 50)),
-                onPressed: () async {
-                  final body = json.encode({
-                    "product_name": nameController.text,
-                    "brand": brandController.text,
-                    "price": double.tryParse(priceController.text) ?? 0,
-                    "undertone": undertone,
-                  });
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            left: 24,
+            right: 24,
+            top: 24,
+          ),
+          // Bungkus dengan SingleChildScrollView untuk mengatasi bottom overflow saat keyboard muncul
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  product == null ? 'Tambah Produk Baru' : 'Edit Produk',
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2333)),
+                ),
+                const SizedBox(height: 16),
+                TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nama Produk')),
+                const SizedBox(height: 12),
+                TextField(controller: brandController, decoration: const InputDecoration(labelText: 'Brand')),
+                const SizedBox(height: 12),
+                TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Harga (Rp)')),
+                const SizedBox(height: 16),
+                const Text('Target Undertone:', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7A5C61))),
+                DropdownButtonFormField<String>(
+                  value: undertone,
+                  items: const [
+                    DropdownMenuItem(value: 'warm', child: Text('Warm')),
+                    DropdownMenuItem(value: 'cool', child: Text('Cool')),
+                    DropdownMenuItem(value: 'neutral', child: Text('Neutral')),
+                  ],
+                  onChanged: (val) => undertone = val ?? 'warm',
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63), minimumSize: const Size(double.infinity, 50)),
+                  onPressed: () async {
+                    final body = json.encode({
+                      "product_name": nameController.text,
+                      "brand": brandController.text,
+                      "price": double.tryParse(priceController.text) ?? 0,
+                      "undertone": undertone,
+                    });
 
-                  if (product == null) {
-                    await http.post(Uri.parse('$baseUrl/api/v1/admin/products'), headers: {"Content-Type": "application/json"}, body: body);
-                  } else {
-                    await http.put(Uri.parse('$baseUrl/api/v1/admin/products/${product['product_id']}'), headers: {"Content-Type": "application/json"}, body: body);
-                  }
+                    if (product == null) {
+                      await http.post(Uri.parse('$baseUrl/api/v1/admin/products'), headers: {"Content-Type": "application/json"}, body: body);
+                    } else {
+                      await http.put(Uri.parse('$baseUrl/api/v1/admin/products/${product['product_id']}'), headers: {"Content-Type": "application/json"}, body: body);
+                    }
 
-                  if (mounted) Navigator.pop(context);
-                  _fetchProducts();
-                },
-                child: const Text('Simpan Produk', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(height: 24),
-            ],
+                    if (mounted) Navigator.pop(context);
+                    _fetchProducts();
+                  },
+                  child: const Text('Simpan Produk', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         );
       },
@@ -117,7 +128,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                 Padding(
                   padding: const EdgeInsets.all(24.0),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween, // Diperbaiki dari .between ke .spaceBetween
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Manajemen Produk', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
                       IconButton(
@@ -138,7 +149,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         child: ListTile(
                           title: Text(p['product_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text('${p['brand']} • ${p['undertone']}'),
+                          subtitle: Text('${p['brand'] ?? '-'} • ${p['undertone'] ?? '-'}'),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [

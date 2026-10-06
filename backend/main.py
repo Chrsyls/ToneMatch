@@ -18,17 +18,30 @@ def get_db_connection():
     return mysql.connector.connect(
         host="localhost",
         user="tonematch_user",
-        password="password123", # Sesuaikan jika Anda mengganti password
+        password="password123",
         database="tonematch_db"
     )
 
-# Inisialisasi kolom role dan avatar_url jika belum ada di tabel users
+# Inisialisasi struktur database & tabel pendukung
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
+        # Memastikan ENUM role mendukung super_admin, admin, user
+        cursor.execute("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(255)")
+        
+        # Memastikan tabel makeup_products ada
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS makeup_products (
+                product_id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                brand VARCHAR(255),
+                price DECIMAL(10,2) DEFAULT 0,
+                target_undertone VARCHAR(50) DEFAULT 'warm',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         conn.commit()
         cursor.close()
         conn.close()
@@ -75,10 +88,9 @@ def get_recommendations(undertone: str):
         cursor = conn.cursor(dictionary=True)
         
         query = """
-            SELECT p.product_id, p.name AS product_name, p.price, b.name AS brand_name 
-            FROM makeup_products p 
-            JOIN brands b ON p.brand_id = b.brand_id 
-            WHERE p.target_undertone = %s OR p.target_undertone = 'neutral'
+            SELECT product_id, name AS product_name, price, brand 
+            FROM makeup_products 
+            WHERE target_undertone = %s OR target_undertone = 'neutral'
             LIMIT 10
         """
         cursor.execute(query, (undertone.lower(),))
@@ -88,6 +100,74 @@ def get_recommendations(undertone: str):
         conn.close()
         
         return {"success": True, "data": products}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+# --- PRODUK: GET ALL PRODUCTS (Untuk Admin & User) ---
+@app.get("/api/v1/products")
+def get_all_products():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT product_id, name AS product_name, brand, price, target_undertone AS undertone FROM makeup_products ORDER BY product_id DESC")
+        products = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return {"success": True, "data": products}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+# --- ADMIN: TAMBAH PRODUK ---
+@app.post("/api/v1/admin/products")
+async def add_product(data: dict):
+    try:
+        name = data.get("product_name")
+        brand = data.get("brand")
+        price = data.get("price", 0)
+        undertone = data.get("undertone", "warm")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        query = "INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)"
+        cursor.execute(query, (name, brand, price, undertone))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {"success": True, "message": "Produk berhasil ditambahkan!"}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+# --- ADMIN: UPDATE PRODUK ---
+@app.put("/api/v1/admin/products/{product_id}")
+async def update_product(product_id: int, data: dict):
+    try:
+        name = data.get("product_name")
+        brand = data.get("brand")
+        price = data.get("price", 0)
+        undertone = data.get("undertone", "warm")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        query = "UPDATE makeup_products SET name = %s, brand = %s, price = %s, target_undertone = %s WHERE product_id = %s"
+        cursor.execute(query, (name, brand, price, undertone, product_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {"success": True, "message": "Produk berhasil diperbarui!"}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+# --- ADMIN: HAPUS PRODUK ---
+@app.delete("/api/v1/admin/products/{product_id}")
+def delete_product(product_id: int):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM makeup_products WHERE product_id = %s", (product_id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {"success": True, "message": "Produk berhasil dihapus"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
@@ -112,7 +192,6 @@ def get_history(user_id: str):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- CRUD: DELETE HISTORY ---
 @app.delete("/api/v1/history/{history_id}")
 def delete_history(history_id: str):
     try:
@@ -133,17 +212,15 @@ def delete_history(history_id: str):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- CRUD: READ FAVORITES ---
 @app.get("/api/v1/favorites/{user_id}")
 def get_favorites(user_id: str):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         query = """
-            SELECT f.favorite_id, p.product_id, p.name AS product_name, p.price, b.name AS brand_name 
+            SELECT f.favorite_id, p.product_id, p.name AS product_name, p.price, p.brand AS brand_name 
             FROM favorite_products f
             JOIN makeup_products p ON f.product_id = p.product_id
-            JOIN brands b ON p.brand_id = b.brand_id
             WHERE f.user_id = %s
         """
         cursor.execute(query, (user_id,))
@@ -154,7 +231,6 @@ def get_favorites(user_id: str):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- CRUD: CREATE FAVORITE ---
 @app.post("/api/v1/favorites")
 async def add_favorite(data: dict):
     try:
@@ -175,7 +251,6 @@ async def add_favorite(data: dict):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- CRUD: DELETE FAVORITE ---
 @app.delete("/api/v1/favorites/{favorite_id}")
 def delete_favorite(favorite_id: str):
     try:
@@ -189,7 +264,6 @@ def delete_favorite(favorite_id: str):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- CRUD: GET USER PROFILE (Auto-Create jika belum ada) ---
 @app.get("/api/v1/users/{user_id}")
 def get_user_profile(user_id: str):
     try:
@@ -199,7 +273,6 @@ def get_user_profile(user_id: str):
         user = cursor.fetchone()
         
         if not user:
-            # Default role untuk akun uji coba otomatis diset 'super_admin' agar fitur lengkap bisa diuji
             default_role = 'super_admin' if user_id == 'usr_dummy_01' else 'user'
             cursor.execute(
                 "INSERT INTO users (uid, email, name, role) VALUES (%s, %s, %s, %s)", 
@@ -215,7 +288,6 @@ def get_user_profile(user_id: str):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- CRUD: UPDATE USER PROFILE (Auto-Create & Upsert Support) ---
 @app.put("/api/v1/users/{user_id}")
 async def update_user_profile(
     user_id: str, 
@@ -263,7 +335,6 @@ async def update_user_profile(
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- ADMIN: STATISTIK DASHBOARD ---
 @app.get("/api/v1/admin/stats")
 def get_admin_stats():
     try:
@@ -292,7 +363,6 @@ def get_admin_stats():
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- ADMIN: LIST SEMUA PENGGUNA ---
 @app.get("/api/v1/admin/users")
 def get_all_users():
     try:
@@ -309,7 +379,6 @@ def get_all_users():
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- ADMIN: UPDATE ROLE PENGGUNA ---
 @app.put("/api/v1/admin/users/{target_uid}/role")
 async def update_user_role(target_uid: str, data: dict):
     try:
@@ -327,7 +396,6 @@ async def update_user_role(target_uid: str, data: dict):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- ADMIN: HAPUS PENGGUNA ---
 @app.delete("/api/v1/admin/users/{target_uid}")
 def delete_user(target_uid: str):
     try:
