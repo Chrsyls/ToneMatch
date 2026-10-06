@@ -26,7 +26,9 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
       final res = await http.get(Uri.parse('$baseUrl/api/v1/products'));
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
-        if (data['success'] == true) setState(() => _products = data['data'] ?? []);
+        if (data['success'] == true) {
+          setState(() => _products = data['data'] ?? []);
+        }
       }
     } catch (e) {
       debugPrint('Error fetching products: $e');
@@ -52,7 +54,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
             right: 24,
             top: 24,
           ),
-          // Bungkus dengan SingleChildScrollView untuk mengatasi bottom overflow saat keyboard muncul
+          // Mengatasi bottom overflow saat keyboard muncul
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -91,9 +93,17 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                     });
 
                     if (product == null) {
-                      await http.post(Uri.parse('$baseUrl/api/v1/admin/products'), headers: {"Content-Type": "application/json"}, body: body);
+                      await http.post(
+                        Uri.parse('$baseUrl/api/v1/admin/products'),
+                        headers: {"Content-Type": "application/json"},
+                        body: body,
+                      );
                     } else {
-                      await http.put(Uri.parse('$baseUrl/api/v1/admin/products/${product['product_id']}'), headers: {"Content-Type": "application/json"}, body: body);
+                      await http.put(
+                        Uri.parse('$baseUrl/api/v1/admin/products/${product['product_id']}'),
+                        headers: {"Content-Type": "application/json"},
+                        body: body,
+                      );
                     }
 
                     if (mounted) Navigator.pop(context);
@@ -149,7 +159,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         child: ListTile(
                           title: Text(p['product_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text('${p['brand'] ?? '-'} • ${p['undertone'] ?? '-'}'),
+                          subtitle: Text('${p['brand'] ?? '-'} • Rp ${p['price'] ?? 0} • ${p['undertone'] ?? '-'}'),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [

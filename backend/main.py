@@ -22,7 +22,7 @@ def get_db_connection():
         database="tonematch_db"
     )
 
-# Inisialisasi struktur database & tabel pendukung
+# Inisialisasi struktur database, tabel brands, dan makeup_products secara otomatis
 def init_db():
     try:
         conn = get_db_connection()
@@ -31,15 +31,24 @@ def init_db():
         cursor.execute("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(255)")
         
-        # Memastikan tabel makeup_products ada
+        # Tabel brands
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS brands (
+                brand_id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL UNIQUE
+            )
+        """)
+        
+        # Tabel makeup_products dengan relasi brand_id
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS makeup_products (
                 product_id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(255) NOT NULL,
-                brand VARCHAR(255),
+                brand_id INT,
                 price DECIMAL(10,2) DEFAULT 0,
                 target_undertone VARCHAR(50) DEFAULT 'warm',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (brand_id) REFERENCES brands(brand_id) ON DELETE SET NULL
             )
         """)
         conn.commit()
@@ -88,9 +97,10 @@ def get_recommendations(undertone: str):
         cursor = conn.cursor(dictionary=True)
         
         query = """
-            SELECT product_id, name AS product_name, price, brand 
-            FROM makeup_products 
-            WHERE target_undertone = %s OR target_undertone = 'neutral'
+            SELECT p.product_id, p.name AS product_name, p.price, COALESCE(b.name, '') AS brand_name 
+            FROM makeup_products p 
+            LEFT JOIN brands b ON p.brand_id = b.brand_id 
+            WHERE p.target_undertone = %s OR p.target_undertone = 'neutral'
             LIMIT 10
         """
         cursor.execute(query, (undertone.lower(),))
@@ -103,13 +113,20 @@ def get_recommendations(undertone: str):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- PRODUK: GET ALL PRODUCTS (Untuk Admin & User) ---
+# --- PRODUK: GET ALL PRODUCTS (Sinkronisasi Admin & User) ---
 @app.get("/api/v1/products")
 def get_all_products():
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT product_id, name AS product_name, brand, price, target_undertone AS undertone FROM makeup_products ORDER BY product_id DESC")
+        query = """
+            SELECT p.product_id, p.name AS product_name, p.price, p.target_undertone AS undertone, 
+                   COALESCE(b.name, '') AS brand 
+            FROM makeup_products p
+            LEFT JOIN brands b ON p.brand_id = b.brand_id
+            ORDER BY p.product_id DESC
+        """
+        cursor.execute(query)
         products = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -117,19 +134,31 @@ def get_all_products():
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# --- ADMIN: TAMBAH PRODUK ---
+# --- ADMIN: TAMBAH PRODUK (Otomatis handle tabel brands) ---
 @app.post("/api/v1/admin/products")
 async def add_product(data: dict):
     try:
         name = data.get("product_name")
-        brand = data.get("brand")
+        brand_name = data.get("brand", "").strip()
         price = data.get("price", 0)
         undertone = data.get("undertone", "warm")
         
         conn = get_db_connection()
         cursor = conn.cursor()
-        query = "INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)"
-        cursor.execute(query, (name, brand, price, undertone))
+        
+        brand_id = None
+        if brand_name:
+            cursor.execute("SELECT brand_id FROM brands WHERE name = %s", (brand_name,))
+            row = cursor.fetchone()
+            if row:
+                brand_id = row[0]
+            else:
+                cursor.execute("INSERT INTO brands (name) VALUES (%s)", (brand_name,))
+                conn.commit()
+                brand_id = cursor.lastrowid
+        
+        query = "INSERT INTO makeup_products (name, brand_id, price, target_undertone) VALUES (%s, %s, %s, %s)"
+        cursor.execute(query, (name, brand_id, price, undertone))
         conn.commit()
         cursor.close()
         conn.close()
@@ -142,14 +171,26 @@ async def add_product(data: dict):
 async def update_product(product_id: int, data: dict):
     try:
         name = data.get("product_name")
-        brand = data.get("brand")
+        brand_name = data.get("brand", "").strip()
         price = data.get("price", 0)
         undertone = data.get("undertone", "warm")
         
         conn = get_db_connection()
         cursor = conn.cursor()
-        query = "UPDATE makeup_products SET name = %s, brand = %s, price = %s, target_undertone = %s WHERE product_id = %s"
-        cursor.execute(query, (name, brand, price, undertone, product_id))
+        
+        brand_id = None
+        if brand_name:
+            cursor.execute("SELECT brand_id FROM brands WHERE name = %s", (brand_name,))
+            row = cursor.fetchone()
+            if row:
+                brand_id = row[0]
+            else:
+                cursor.execute("INSERT INTO brands (name) VALUES (%s)", (brand_name,))
+                conn.commit()
+                brand_id = cursor.lastrowid
+                
+        query = "UPDATE makeup_products SET name = %s, brand_id = %s, price = %s, target_undertone = %s WHERE product_id = %s"
+        cursor.execute(query, (name, brand_id, price, undertone, product_id))
         conn.commit()
         cursor.close()
         conn.close()
@@ -218,9 +259,10 @@ def get_favorites(user_id: str):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         query = """
-            SELECT f.favorite_id, p.product_id, p.name AS product_name, p.price, p.brand AS brand_name 
+            SELECT f.favorite_id, p.product_id, p.name AS product_name, p.price, b.name AS brand_name 
             FROM favorite_products f
             JOIN makeup_products p ON f.product_id = p.product_id
+            LEFT JOIN brands b ON p.brand_id = b.brand_id
             WHERE f.user_id = %s
         """
         cursor.execute(query, (user_id,))
