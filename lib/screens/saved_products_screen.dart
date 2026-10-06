@@ -16,7 +16,7 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
   List<dynamic> _favorites = [];
   bool _isLoading = true;
   String? _errorMessage;
-  final String baseUrl = 'http://192.168.100.68:8000';
+  final String baseUrl = 'http://10.4.89.69:8000';
 
   @override
   void initState() {

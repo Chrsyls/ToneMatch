@@ -16,7 +16,7 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
   int _totalUsers = 0;
   int _totalHistory = 0;
   int _totalProducts = 0;
-  final String baseUrl = 'http://192.168.100.68:8000';
+  final String baseUrl = 'http://10.4.89.69:8000';
 
   @override
   void initState() {

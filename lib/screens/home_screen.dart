@@ -18,7 +18,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ImagePicker _picker = ImagePicker();
-  final String baseUrl = 'http://192.168.100.68:8000'; // Sesuaikan IP Anda
+  final String baseUrl = 'http://10.4.89.69:8000'; // Sesuaikan IP Anda
 
   Future<void> _openCustomCamera() async {
     final File? capturedImage = await Navigator.push(

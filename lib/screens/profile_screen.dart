@@ -22,7 +22,7 @@ class ProfileScreenState extends State<ProfileScreen> {
   static bool _isEditedLocally = false; 
 
   bool _isLoading = true;
-  final String baseUrl = 'http://192.168.100.68:8000'; // IP Anda
+  final String baseUrl = 'http://10.4.89.69:8000'; // IP Anda
 
   @override
   void initState() {
