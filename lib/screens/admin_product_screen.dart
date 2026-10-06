@@ -33,10 +33,10 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
             _products = data['data'] ?? [];
             _isLoading = false;
           });
+          return;
         }
-      } else {
-        setState(() => _isLoading = false);
       }
+      setState(() => _isLoading = false);
     } catch (e) {
       debugPrint('Error fetching products: $e');
       setState(() => _isLoading = false);
@@ -48,6 +48,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
     final brandController = TextEditingController(text: product?['brand'] ?? '');
     final priceController = TextEditingController(text: product?['price']?.toString() ?? '');
     String undertone = product?['undertone'] ?? 'warm';
+    bool isSaving = false;
 
     showModalBottomSheet(
       context: context,
@@ -55,73 +56,104 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-            left: 24,
-            right: 24,
-            top: 24,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  product == null ? 'Tambah Produk Baru' : 'Edit Produk',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2333)),
-                ),
-                const SizedBox(height: 16),
-                TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nama Produk')),
-                const SizedBox(height: 12),
-                TextField(controller: brandController, decoration: const InputDecoration(labelText: 'Brand')),
-                const SizedBox(height: 12),
-                TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Harga (Rp)')),
-                const SizedBox(height: 16),
-                const Text('Target Undertone:', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7A5C61))),
-                DropdownButtonFormField<String>(
-                  value: undertone,
-                  items: const [
-                    DropdownMenuItem(value: 'warm', child: Text('Warm')),
-                    DropdownMenuItem(value: 'cool', child: Text('Cool')),
-                    DropdownMenuItem(value: 'neutral', child: Text('Neutral')),
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                left: 24,
+                right: 24,
+                top: 24,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product == null ? 'Tambah Produk Baru' : 'Edit Produk',
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2333)),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nama Produk')),
+                    const SizedBox(height: 12),
+                    TextField(controller: brandController, decoration: const InputDecoration(labelText: 'Brand')),
+                    const SizedBox(height: 12),
+                    TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Harga (Rp)')),
+                    const SizedBox(height: 16),
+                    const Text('Target Undertone:', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7A5C61))),
+                    DropdownButtonFormField<String>(
+                      value: undertone,
+                      items: const [
+                        DropdownMenuItem(value: 'warm', child: Text('Warm')),
+                        DropdownMenuItem(value: 'cool', child: Text('Cool')),
+                        DropdownMenuItem(value: 'neutral', child: Text('Neutral')),
+                      ],
+                      onChanged: (val) => undertone = val ?? 'warm',
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFE91E63), 
+                        minimumSize: const Size(double.infinity, 50),
+                        disabledBackgroundColor: Colors.grey,
+                      ),
+                      onPressed: isSaving ? null : () async {
+                        setModalState(() => isSaving = true);
+                        try {
+                          final body = json.encode({
+                            "product_name": nameController.text.trim(),
+                            "brand": brandController.text.trim(),
+                            "price": double.tryParse(priceController.text) ?? 0,
+                            "undertone": undertone,
+                          });
+
+                          final url = product == null
+                              ? Uri.parse('$baseUrl/api/v1/admin/products')
+                              : Uri.parse('$baseUrl/api/v1/admin/products/${product['product_id']}');
+
+                          final response = await (product == null
+                              ? http.post(url, headers: {"Content-Type": "application/json"}, body: body)
+                              : http.put(url, headers: {"Content-Type": "application/json"}, body: body));
+
+                          if (response.statusCode == 200) {
+                            final resData = json.decode(response.body);
+                            if (resData['success'] == true) {
+                              if (mounted) Navigator.pop(context); // Tutup modal
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Produk berhasil disimpan!'), backgroundColor: Colors.green),
+                              );
+                              _fetchProducts(); // Sinkronisasi ulang
+                              return; // Skip set isSaving = false krn modal sdh tertutup
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Gagal: ${resData['error']}'), backgroundColor: Colors.red),
+                              );
+                            }
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Server Error: ${response.statusCode}'), backgroundColor: Colors.red),
+                            );
+                          }
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Koneksi Gagal: $e'), backgroundColor: Colors.red),
+                          );
+                        } 
+                        
+                        // Hanya jalan jika gagal & modal belum ditutup
+                        setModalState(() => isSaving = false);
+                      },
+                      child: isSaving 
+                          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text('Simpan Produk', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(height: 24),
                   ],
-                  onChanged: (val) => undertone = val ?? 'warm',
                 ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63), minimumSize: const Size(double.infinity, 50)),
-                  onPressed: () async {
-                    final body = json.encode({
-                      "product_name": nameController.text,
-                      "brand": brandController.text,
-                      "price": double.tryParse(priceController.text) ?? 0,
-                      "undertone": undertone,
-                    });
-
-                    if (product == null) {
-                      await http.post(
-                        Uri.parse('$baseUrl/api/v1/admin/products'),
-                        headers: {"Content-Type": "application/json"},
-                        body: body,
-                      );
-                    } else {
-                      await http.put(
-                        Uri.parse('$baseUrl/api/v1/admin/products/${product['product_id']}'),
-                        headers: {"Content-Type": "application/json"},
-                        body: body,
-                      );
-                    }
-
-                    if (mounted) Navigator.pop(context);
-                    _fetchProducts(); // Sinkronisasi ulang data terbaru
-                  },
-                  child: const Text('Simpan Produk', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );

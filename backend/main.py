@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import mysql.connector
@@ -8,7 +8,6 @@ from datetime import datetime
 
 app = FastAPI()
 
-# Memastikan folder uploads ada
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
@@ -85,7 +84,6 @@ def get_recommendations(undertone: str):
         cursor.execute(query, (undertone.lower(),))
         products = cursor.fetchall()
         
-        # PERBAIKAN: Konversi DECIMAL ke Float untuk menghindari JSON error 500
         for p in products:
             if p.get('price') is not None:
                 p['price'] = float(p['price'])
@@ -105,7 +103,6 @@ def get_all_products():
         cursor.execute(query)
         products = cursor.fetchall()
         
-        # PERBAIKAN: Konversi DECIMAL ke Float
         for p in products:
             if p.get('price') is not None:
                 p['price'] = float(p['price'])
@@ -116,9 +113,11 @@ def get_all_products():
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
+# MENGGUNAKAN request: Request UNTUK MENCEGAH SILENT ERROR
 @app.post("/api/v1/admin/products")
-async def add_product(data: dict):
+async def add_product(request: Request):
     try:
+        data = await request.json()
         name = data.get("product_name")
         brand = data.get("brand", "").strip()
         price = data.get("price", 0)
@@ -136,8 +135,9 @@ async def add_product(data: dict):
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 @app.put("/api/v1/admin/products/{product_id}")
-async def update_product(product_id: int, data: dict):
+async def update_product(product_id: int, request: Request):
     try:
+        data = await request.json()
         name = data.get("product_name")
         brand = data.get("brand", "").strip()
         price = data.get("price", 0)
@@ -219,7 +219,6 @@ def get_favorites(user_id: str):
         cursor.execute(query, (user_id,))
         favorites = cursor.fetchall()
         
-        # PERBAIKAN: Konversi DECIMAL ke Float
         for f in favorites:
             if f.get('price') is not None:
                 f['price'] = float(f['price'])
@@ -231,8 +230,9 @@ def get_favorites(user_id: str):
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 @app.post("/api/v1/favorites")
-async def add_favorite(data: dict):
+async def add_favorite(request: Request):
     try:
+        data = await request.json()
         user_id = data.get("user_id")
         product_id = data.get("product_id")
         
@@ -375,8 +375,9 @@ def get_all_users():
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 @app.put("/api/v1/admin/users/{target_uid}/role")
-async def update_user_role(target_uid: str, data: dict):
+async def update_user_role(target_uid: str, request: Request):
     try:
+        data = await request.json()
         new_role = data.get("role")
         if new_role not in ['super_admin', 'admin', 'user']:
             return JSONResponse(status_code=400, content={"success": False, "error": "Role tidak valid"})
