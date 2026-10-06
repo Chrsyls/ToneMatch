@@ -24,7 +24,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? _serverAvatarUrl; // Menyimpan URL gambar dari backend
   bool _isAvatarRemoved = false; // Flag jika tombol hapus ditekan
   
-  final String baseUrl = 'http://10.4.89.69:8000'; // IP Anda
+  final String baseUrl = 'http://10.4.89.111:8000'; // IP Anda
 
   @override
   void initState() {

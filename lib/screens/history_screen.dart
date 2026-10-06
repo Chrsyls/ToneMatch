@@ -16,7 +16,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   List<dynamic> _historyData = [];
   bool _isLoading = true;
   String? _errorMessage;
-  final String baseUrl = 'http://10.4.89.69:8000'; // Sesuaikan IP Anda
+  final String baseUrl = 'http://10.4.89.111:8000'; // Sesuaikan IP Anda
 
   @override
   void initState() {

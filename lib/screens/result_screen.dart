@@ -21,7 +21,7 @@ class ResultScreen extends StatefulWidget {
 class _ResultScreenState extends State<ResultScreen> {
   List<dynamic> _recommendations = [];
   bool _isLoading = true;
-  final String baseUrl = 'http://10.4.89.69:8000'; // IP Baru Anda
+  final String baseUrl = 'http://10.4.89.111:8000'; // IP Baru Anda
 
   @override
   void initState() {
