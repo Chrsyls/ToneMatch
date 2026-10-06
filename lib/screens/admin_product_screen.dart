@@ -54,7 +54,6 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
             right: 24,
             top: 24,
           ),
-          // Mengatasi bottom overflow saat keyboard muncul
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
