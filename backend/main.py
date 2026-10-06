@@ -1,6 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, Form, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 import mysql.connector
 import os
 import time
@@ -19,13 +20,33 @@ def get_db_connection():
         database="tonematch_db"
     )
 
+# Model Data Pydantic untuk Validasi Super Aman
+class ProductCreate(BaseModel):
+    product_name: str
+    brand: str
+    price: float
+    undertone: str
+
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        
         cursor.execute("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(255)")
         
+        # AUTO-REPAIR SCHEMA: Deteksi jika tabel lama (dengan brand_id) masih tersangkut
+        cursor.execute("SHOW TABLES LIKE 'makeup_products'")
+        if cursor.fetchone():
+            cursor.execute("SHOW COLUMNS FROM makeup_products LIKE 'brand_id'")
+            if cursor.fetchone():
+                print("Mendeteksi skema lama! Memperbaiki struktur tabel secara otomatis...")
+                cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
+                cursor.execute("DROP TABLE IF EXISTS makeup_products")
+                cursor.execute("DROP TABLE IF EXISTS favorite_products")
+                cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
+                
+        # Buat tabel dengan skema terbaru yang stabil
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS makeup_products (
                 product_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -36,6 +57,16 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS favorite_products (
+                favorite_id VARCHAR(128) PRIMARY KEY,
+                user_id VARCHAR(128),
+                product_id INT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
         conn.commit()
         cursor.close()
         conn.close()
@@ -71,7 +102,7 @@ async def analyze_undertone(image: UploadFile = File(...)):
 
         cursor.close()
         conn.close()
-        return {"success": True, "message": "Berhasil disimpan ke MySQL!", "data": {"undertone": "warm"}}
+        return {"success": True, "message": "Berhasil disimpan!", "data": {"undertone": "warm"}}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
@@ -113,20 +144,13 @@ def get_all_products():
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# MENGGUNAKAN request: Request UNTUK MENCEGAH SILENT ERROR
 @app.post("/api/v1/admin/products")
-async def add_product(request: Request):
+async def add_product(data: ProductCreate):
     try:
-        data = await request.json()
-        name = data.get("product_name")
-        brand = data.get("brand", "").strip()
-        price = data.get("price", 0)
-        undertone = data.get("undertone", "warm")
-        
         conn = get_db_connection()
         cursor = conn.cursor()
         query = "INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)"
-        cursor.execute(query, (name, brand, price, undertone))
+        cursor.execute(query, (data.product_name, data.brand, data.price, data.undertone))
         conn.commit()
         cursor.close()
         conn.close()
@@ -135,18 +159,12 @@ async def add_product(request: Request):
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 @app.put("/api/v1/admin/products/{product_id}")
-async def update_product(product_id: int, request: Request):
+async def update_product(product_id: int, data: ProductCreate):
     try:
-        data = await request.json()
-        name = data.get("product_name")
-        brand = data.get("brand", "").strip()
-        price = data.get("price", 0)
-        undertone = data.get("undertone", "warm")
-        
         conn = get_db_connection()
         cursor = conn.cursor()
         query = "UPDATE makeup_products SET name = %s, brand = %s, price = %s, target_undertone = %s WHERE product_id = %s"
-        cursor.execute(query, (name, brand, price, undertone, product_id))
+        cursor.execute(query, (data.product_name, data.brand, data.price, data.undertone, product_id))
         conn.commit()
         cursor.close()
         conn.close()
@@ -201,7 +219,7 @@ def delete_history(history_id: str):
         conn.commit()
         cursor.close()
         conn.close()
-        return {"success": True, "message": "Riwayat berhasil dihapus"}
+        return {"success": True, "message": "Riwayat dihapus"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
@@ -246,7 +264,7 @@ async def add_favorite(request: Request):
         
         cursor.close()
         conn.close()
-        return {"success": True, "message": "Produk berhasil disimpan ke favorit!"}
+        return {"success": True, "message": "Disimpan ke favorit!"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
@@ -259,7 +277,7 @@ def delete_favorite(favorite_id: str):
         conn.commit()
         cursor.close()
         conn.close()
-        return {"success": True, "message": "Produk dihapus dari favorit"}
+        return {"success": True, "message": "Dihapus dari favorit"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
@@ -330,7 +348,7 @@ async def update_user_profile(
         
         cursor.close()
         conn.close()
-        return {"success": True, "message": "Profil berhasil diperbarui!", "avatar_url": avatar_path, "role": new_role}
+        return {"success": True, "message": "Profil diperbarui!", "avatar_url": avatar_path, "role": new_role}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
@@ -388,7 +406,7 @@ async def update_user_role(target_uid: str, request: Request):
         conn.commit()
         cursor.close()
         conn.close()
-        return {"success": True, "message": "Role pengguna berhasil diperbarui!"}
+        return {"success": True, "message": "Role diperbarui!"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
@@ -401,6 +419,6 @@ def delete_user(target_uid: str):
         conn.commit()
         cursor.close()
         conn.close()
-        return {"success": True, "message": "Pengguna berhasil dihapus"}
+        return {"success": True, "message": "Pengguna dihapus"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})

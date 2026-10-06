@@ -35,6 +35,14 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
           });
           return;
         }
+      } else {
+        // Tampilkan pesan jika gagal memuat data produk
+        final errData = json.decode(res.body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal Memuat: ${errData['error']}'), backgroundColor: Colors.red),
+          );
+        }
       }
       setState(() => _isLoading = false);
     } catch (e) {
@@ -119,20 +127,23 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                           if (response.statusCode == 200) {
                             final resData = json.decode(response.body);
                             if (resData['success'] == true) {
-                              if (mounted) Navigator.pop(context); // Tutup modal
+                              if (mounted) Navigator.pop(context);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('Produk berhasil disimpan!'), backgroundColor: Colors.green),
                               );
-                              _fetchProducts(); // Sinkronisasi ulang
-                              return; // Skip set isSaving = false krn modal sdh tertutup
+                              _fetchProducts(); 
+                              return; 
                             } else {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text('Gagal: ${resData['error']}'), backgroundColor: Colors.red),
                               );
                             }
                           } else {
+                            // Menangkap pesan asli dari backend Python
+                            final errData = json.decode(response.body);
+                            final errorMsg = errData['error'] ?? 'Server Error: ${response.statusCode}';
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Server Error: ${response.statusCode}'), backgroundColor: Colors.red),
+                              SnackBar(content: Text('Server Database Error: $errorMsg'), backgroundColor: Colors.red),
                             );
                           }
                         } catch (e) {
@@ -141,7 +152,6 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                           );
                         } 
                         
-                        // Hanya jalan jika gagal & modal belum ditutup
                         setModalState(() => isSaving = false);
                       },
                       child: isSaving 
