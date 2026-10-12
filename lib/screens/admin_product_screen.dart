@@ -36,7 +36,6 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
           return;
         }
       } else {
-        // Tampilkan pesan jika gagal memuat data produk
         final errData = json.decode(res.body);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -49,6 +48,113 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
       debugPrint('Error fetching products: $e');
       setState(() => _isLoading = false);
     }
+  }
+
+  // MODAL UNTUK AUTO-SCRAPING
+  Future<void> _showScrapeDialog() async {
+    final TextEditingController urlController = TextEditingController();
+    final TextEditingController brandController = TextEditingController();
+    String undertone = 'neutral';
+    bool isScraping = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Auto-Scrape Produk', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Masukkan URL e-commerce target untuk menarik data secara otomatis.', style: TextStyle(fontSize: 13)),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: urlController,
+                      decoration: const InputDecoration(labelText: 'URL Target', border: OutlineInputBorder()),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: brandController,
+                      decoration: const InputDecoration(labelText: 'Nama Brand (Bawaan)', border: OutlineInputBorder()),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      decoration: const InputDecoration(labelText: 'Target Undertone Bawaan', border: OutlineInputBorder()),
+                      value: undertone,
+                      items: const [
+                        DropdownMenuItem(value: 'warm', child: Text('Warm')),
+                        DropdownMenuItem(value: 'cool', child: Text('Cool')),
+                        DropdownMenuItem(value: 'neutral', child: Text('Neutral')),
+                      ],
+                      onChanged: (val) => undertone = val ?? 'neutral',
+                    ),
+                    if (isScraping) 
+                      const Padding(
+                        padding: EdgeInsets.only(top: 24.0),
+                        child: Center(child: CircularProgressIndicator(color: Color(0xFFE91E63))),
+                      )
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isScraping ? null : () => Navigator.pop(context),
+                  child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63)),
+                  onPressed: isScraping ? null : () async {
+                    if (urlController.text.isEmpty || brandController.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('URL dan Brand tidak boleh kosong!'), backgroundColor: Colors.red),
+                      );
+                      return;
+                    }
+
+                    setStateDialog(() => isScraping = true);
+                    try {
+                      final response = await http.post(
+                        Uri.parse('$baseUrl/api/v1/admin/products/scrape'),
+                        headers: {'Content-Type': 'application/json'},
+                        body: jsonEncode({
+                          'url': urlController.text.trim(),
+                          'brand': brandController.text.trim(),
+                          'target_undertone': undertone
+                        }),
+                      );
+
+                      final data = json.decode(response.body);
+                      if (response.statusCode == 200 && data['success'] == true) {
+                        if (mounted) Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(data['message']), backgroundColor: Colors.green),
+                        );
+                        _fetchProducts(); 
+                      } else {
+                        throw Exception(data['error'] ?? data['message'] ?? 'Gagal memproses data');
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                      );
+                    } finally {
+                      if (mounted && isScraping) {
+                        setStateDialog(() => isScraping = false);
+                      }
+                    }
+                  },
+                  child: const Text('Mulai Scrape', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
   }
 
   void _showAddEditModal({Map<String, dynamic>? product}) {
@@ -139,7 +245,6 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                               );
                             }
                           } else {
-                            // Menangkap pesan asli dari backend Python
                             final errData = json.decode(response.body);
                             final errorMsg = errData['error'] ?? 'Server Error: ${response.statusCode}';
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -190,9 +295,20 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Manajemen Produk', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
-                      IconButton(
-                        icon: const Icon(Icons.add_circle, color: Color(0xFFE91E63), size: 36),
-                        onPressed: () => _showAddEditModal(),
+                      // Kumpulan tombol di kanan atas
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.language, color: Colors.blueAccent, size: 32),
+                            tooltip: 'Scrape Web',
+                            onPressed: _showScrapeDialog,
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: const Icon(Icons.add_circle, color: Color(0xFFE91E63), size: 36),
+                            onPressed: () => _showAddEditModal(),
+                          ),
+                        ],
                       ),
                     ],
                   ),

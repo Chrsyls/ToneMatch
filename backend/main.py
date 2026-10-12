@@ -7,6 +7,11 @@ import os
 import time
 from datetime import datetime
 
+# Import tambahan untuk fitur Scraping
+import requests
+from bs4 import BeautifulSoup
+import re
+
 app = FastAPI()
 
 os.makedirs("uploads", exist_ok=True)
@@ -20,12 +25,18 @@ def get_db_connection():
         database="tonematch_db"
     )
 
-# Model Data Pydantic untuk Validasi Super Aman
+# Model Data Pydantic
 class ProductCreate(BaseModel):
     product_name: str
     brand: str
     price: float
     undertone: str
+
+# Model Data Pydantic untuk Auto-Scraping
+class ScrapeRequest(BaseModel):
+    url: str
+    brand: str
+    target_undertone: str = "neutral"
 
 def init_db():
     try:
@@ -35,7 +46,7 @@ def init_db():
         cursor.execute("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(255)")
         
-        # AUTO-REPAIR SCHEMA: Deteksi jika tabel lama (dengan brand_id) masih tersangkut
+        # AUTO-REPAIR SCHEMA
         cursor.execute("SHOW TABLES LIKE 'makeup_products'")
         if cursor.fetchone():
             cursor.execute("SHOW COLUMNS FROM makeup_products LIKE 'brand_id'")
@@ -74,6 +85,57 @@ def init_db():
         print(f"Init DB Notice: {e}")
 
 init_db()
+
+# ==========================================
+# ENDPOINT SCRAPING PRODUK (BARU)
+# ==========================================
+@app.post("/api/v1/admin/products/scrape")
+async def scrape_products(req: ScrapeRequest):
+    try:
+        # Gunakan header browser agar tidak diblokir web target
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(req.url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # CATATAN PENTING: Class CSS ('product-card', 'product-title', 'price-text') 
+        # harus disesuaikan dengan hasil Inspect Element di web target aslinya.
+        items = soup.find_all('div', class_='product-card') 
+        
+        if not items:
+            return JSONResponse(status_code=400, content={"success": False, "message": "Tidak ada produk yang ditemukan. Cek kembali class HTML pada skrip scraper."})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        products_added = 0
+
+        for item in items:
+            name_elem = item.find('h3', class_='product-title') 
+            price_elem = item.find('span', class_='price-text')
+
+            if name_elem and price_elem:
+                name = name_elem.text.strip()
+                
+                # Bersihkan format mata uang (misal: "Rp 150.000" -> 150000.00)
+                raw_price = re.sub(r'[^\d]', '', price_elem.text)
+                price = float(raw_price) if raw_price else 0.0
+
+                sql = "INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)"
+                cursor.execute(sql, (name, req.brand, price, req.target_undertone))
+                products_added += 1
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {"success": True, "message": f"Berhasil scraping dan menambahkan {products_added} produk dari {req.brand}."}
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": f"Gagal scraping: {str(e)}"})
+
+# ==========================================
+# ENDPOINT LAINNYA
+# ==========================================
 
 @app.post("/api/v1/analyze/undertone")
 async def analyze_undertone(image: UploadFile = File(...)):
