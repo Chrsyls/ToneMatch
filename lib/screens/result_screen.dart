@@ -25,9 +25,7 @@ class _ResultScreenState extends State<ResultScreen> {
   bool _isLoading = true;
   final String baseUrl = 'http://10.4.89.111:8000';
 
-  // Controller untuk fitur pencarian & filter kategori
   final TextEditingController _searchController = TextEditingController();
-  String _selectedFilter = 'all'; // 'all', 'warm', 'cool', 'neutral'
 
   @override
   void initState() {
@@ -52,7 +50,12 @@ class _ResultScreenState extends State<ResultScreen> {
         final data = json.decode(response.body);
         if (data['success'] == true) {
           setState(() {
-            _recommendations = data['data'] ?? [];
+            // Memastikan data yang masuk murni sesuai undertone terdeteksi
+            final targetTone = widget.detectedUndertone.toLowerCase();
+            _recommendations = (data['data'] ?? []).where((prod) {
+              final prodTone = (prod['undertone'] ?? '').toString().toLowerCase();
+              return prodTone == targetTone;
+            }).toList();
             _filteredRecommendations = _recommendations;
           });
         }
@@ -66,19 +69,13 @@ class _ResultScreenState extends State<ResultScreen> {
     }
   }
 
-  // Logika Filter & Pencarian Real-Time (Fitur 2)
   void _filterProducts() {
     final query = _searchController.text.toLowerCase();
     setState(() {
       _filteredRecommendations = _recommendations.where((prod) {
         final name = (prod['product_name'] ?? '').toLowerCase();
         final brand = (prod['brand'] ?? '').toLowerCase();
-        final undertone = (prod['undertone'] ?? widget.detectedUndertone).toLowerCase();
-
-        final matchesSearch = name.contains(query) || brand.contains(query);
-        final matchesFilter = _selectedFilter == 'all' || undertone == _selectedFilter;
-
-        return matchesSearch && matchesFilter;
+        return name.contains(query) || brand.contains(query);
       }).toList();
     });
   }
@@ -117,7 +114,6 @@ class _ResultScreenState extends State<ResultScreen> {
     return currencyFormatter.format(parsedPrice);
   }
 
-  // Bottom Sheet Detail Produk (Fitur 3)
   void _showProductDetail(Map<String, dynamic> prod) {
     final imageUrl = prod['image_url'];
     final productName = prod['product_name'] ?? 'Makeup Item';
@@ -176,16 +172,14 @@ class _ResultScreenState extends State<ResultScreen> {
                 style: const TextStyle(color: Color(0xFF7A5C61), height: 1.4),
               ),
               const SizedBox(height: 24),
-              ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63)).runtimeType == Object
-                  ? ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63), minimumSize: const Size(double.infinity, 50)),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _toggleSaveProduct(prod['product_id'].toString(), prod['is_saved'] ?? false);
-                      },
-                      child: const Text('Simpan ke Favorit ❤️', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    )
-                  : Container(),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63), minimumSize: const Size(double.infinity, 50)),
+                onPressed: () {
+                  Navigator.pop(context);
+                  _toggleSaveProduct(prod['product_id'].toString(), prod['is_saved'] ?? false);
+                },
+                child: const Text('Simpan ke Favorit ❤️', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
               const SizedBox(height: 12),
             ],
           ),
@@ -197,6 +191,7 @@ class _ResultScreenState extends State<ResultScreen> {
   @override
   Widget build(BuildContext context) {
     String undertoneTitle = widget.detectedUndertone.toUpperCase();
+    final userPhotoUrl = widget.imagePath != null ? '$baseUrl/${widget.imagePath}' : null;
 
     return Scaffold(
       body: Stack(
@@ -222,7 +217,7 @@ class _ResultScreenState extends State<ResultScreen> {
                   child: ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     children: [
-                      // Card Profil Undertone
+                      // Card Profil Undertone dengan Foto User
                       ClipRRect(
                         borderRadius: BorderRadius.circular(24),
                         child: BackdropFilter(
@@ -236,8 +231,26 @@ class _ResultScreenState extends State<ResultScreen> {
                             ),
                             child: Column(
                               children: [
-                                const Icon(Icons.auto_awesome, size: 40, color: Color(0xFFE91E63)),
-                                const SizedBox(height: 12),
+                                if (userPhotoUrl != null) ...[
+                                  Container(
+                                    width: 80, height: 80,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: const Color(0xFFE91E63), width: 2),
+                                    ),
+                                    child: ClipOval(
+                                      child: Image.network(
+                                        userPhotoUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (c, e, s) => const Icon(Icons.person, size: 40, color: Color(0xFFE91E63)),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                ] else ...[
+                                  const Icon(Icons.auto_awesome, size: 40, color: Color(0xFFE91E63)),
+                                  const SizedBox(height: 12),
+                                ],
                                 const Text('Undertone Anda Terdeteksi:', style: TextStyle(color: Color(0xFF7A5C61), fontSize: 14)),
                                 const SizedBox(height: 4),
                                 Text(undertoneTitle, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
@@ -256,7 +269,7 @@ class _ResultScreenState extends State<ResultScreen> {
                       const Text('Rekomendasi Produk Makeup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
                       const SizedBox(height: 16),
                       
-                      // Kolom Pencarian Produk (Fitur 2)
+                      // Kolom Pencarian Produk
                       TextField(
                         controller: _searchController,
                         decoration: InputDecoration(
@@ -268,35 +281,24 @@ class _ResultScreenState extends State<ResultScreen> {
                           isDense: true,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 20),
 
-                      // Tombol Filter Kategori Undertone (Fitur 2)
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            _buildFilterChip('Semua', 'all'),
-                            const SizedBox(width: 8),
-                            _buildFilterChip('Warm', 'warm'),
-                            const SizedBox(width: 8),
-                            _buildFilterChip('Cool', 'cool'),
-                            const SizedBox(width: 8),
-                            _buildFilterChip('Neutral', 'neutral'),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Area Rekomendasi
+                      // Area Rekomendasi Murni Sesuai Undertone
                       _isLoading
                           ? const Padding(
                               padding: EdgeInsets.symmetric(vertical: 40),
                               child: Center(child: CircularProgressIndicator(color: Color(0xFFE91E63))),
                             )
                           : _filteredRecommendations.isEmpty
-                              ? const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 20),
-                                  child: Center(child: Text('Tidak ada produk yang sesuai dengan pencarian/filter.', style: TextStyle(color: Color(0xFF7A5C61)))),
+                              ? Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 30),
+                                  child: Center(
+                                    child: Text(
+                                      'Belum ada produk spesifik untuk undertone $undertoneTitle. Silakan tambahkan produk melalui menu Manajemen Produk Admin.',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(color: Color(0xFF7A5C61), height: 1.4),
+                                    ),
+                                  ),
                                 )
                               : ListView.builder(
                                   shrinkWrap: true,
@@ -315,7 +317,6 @@ class _ResultScreenState extends State<ResultScreen> {
                                         border: Border.all(color: Colors.white, width: 1),
                                       ),
                                       child: ListTile(
-                                        // Saat diklik membuka detail produk (Fitur 3)
                                         onTap: () => _showProductDetail(prod),
                                         leading: ClipRRect(
                                           borderRadius: BorderRadius.circular(10),
@@ -346,23 +347,6 @@ class _ResultScreenState extends State<ResultScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildFilterChip(String label, String value) {
-    bool isSelected = _selectedFilter == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      selectedColor: const Color(0xFFE91E63),
-      backgroundColor: Colors.white.withOpacity(0.4),
-      labelStyle: TextStyle(color: isSelected ? Colors.white : const Color(0xFF4A2333), fontWeight: FontWeight.bold),
-      onSelected: (bool selected) {
-        setState(() {
-          _selectedFilter = value;
-          _filterProducts();
-        });
-      },
     );
   }
 }

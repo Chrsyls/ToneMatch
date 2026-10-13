@@ -75,10 +75,8 @@ def init_db():
 
 init_db()
 
-# --- FUNGSI KLASIFIKASI UNDERTONE CERDAS & SEIMBANG ---
 def determine_undertone(product_name: str, index: int = 0) -> str:
     name_lower = product_name.lower()
-    
     warm_keywords = ['warm', 'golden', 'honey', 'peach', 'tan', 'amber', 'caramel', 'yellow', 'sand', 'bronze']
     cool_keywords = ['cool', 'pink', 'rose', 'blue', 'fair', 'porcelain', 'ash', 'ruby', 'berry', 'magenta']
     neutral_keywords = ['neutral', 'ivory', 'natural', 'nude', 'buff', 'classic', 'medium', 'universal']
@@ -122,7 +120,6 @@ async def fetch_products(req: ScrapeRequest):
 
                 if name:
                     smart_undertone = determine_undertone(name, idx)
-
                     cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (name,))
                     if not cursor.fetchone():
                         cursor.execute(
@@ -210,49 +207,24 @@ async def fetch_products(req: ScrapeRequest):
         conn.commit()
         cursor.close()
         conn.close()
-        return {"success": True, "message": f"Berhasil menambah {products_added} produk dengan distribusi undertone seimbang untuk {display_brand}."}
+        return {"success": True, "message": f"Berhasil menambah {products_added} produk untuk {display_brand}."}
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": f"Kesalahan sistem: {str(e)}"})
 
-
-# ==========================================
-# ENDPOINT STANDAR (DIPERBARUI UNTUK FRONTEND)
-# ==========================================
-@app.post("/api/v1/analyze/undertone")
-async def analyze_undertone(image: UploadFile = File(...)):
-    try:
-        file_name = f"{int(time.time())}_{image.filename}"
-        file_path = f"uploads/{file_name}"
-        with open(file_path, "wb") as buffer:
-            buffer.write(await image.read())
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT uid FROM users WHERE uid = %s", ('usr_dummy_01',))
-        if not cursor.fetchone():
-            cursor.execute("INSERT INTO users (uid, email, name, role) VALUES (%s, %s, %s, %s)", ('usr_dummy_01', 'test@tonematch.app', 'Alvito Aryo', 'super_admin'))
-            conn.commit()
-        history_id = f"hist_{int(time.time())}"
-        cursor.execute("INSERT INTO classification_histories (history_id, user_id, image_url, detected_undertone, confidence_score) VALUES (%s, %s, %s, %s, %s)", (history_id, 'usr_dummy_01', file_path, 'warm', 0.88))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return {"success": True, "message": "Berhasil disimpan!", "data": {"undertone": "warm"}}
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 @app.get("/api/v1/recommendations/{undertone}")
 def get_recommendations(undertone: str):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        # Mengembalikan data lengkap termasuk image_url, is_saved status, dan undertone spesifik
+        # HANYA mengambil produk yang persis sesuai dengan undertone terdeteksi
         cursor.execute("""
             SELECT p.product_id, p.name AS product_name, p.price, p.brand, p.image_url, p.target_undertone AS undertone,
                    CASE WHEN f.favorite_id IS NOT NULL THEN 1 ELSE 0 END AS is_saved
             FROM makeup_products p
             LEFT JOIN favorite_products f ON p.product_id = f.product_id AND f.user_id = 'usr_dummy_01'
-            WHERE p.target_undertone = %s OR p.target_undertone = 'neutral' 
+            WHERE p.target_undertone = %s
             LIMIT 20
         """, (undertone.lower(),))
         products = cursor.fetchall()
