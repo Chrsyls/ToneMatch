@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 import re
 import json
 from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
 
 app = FastAPI()
 
@@ -44,7 +45,6 @@ def init_db():
         cursor.execute("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(255)")
         
-        # Cek kolom image_url pada makeup_products
         cursor.execute("SHOW TABLES LIKE 'makeup_products'")
         if cursor.fetchone():
             cursor.execute("SHOW COLUMNS FROM makeup_products LIKE 'image_url'")
@@ -104,88 +104,127 @@ def init_db():
 init_db()
 
 # ==========================================
-# ENDPOINT SCRAPING DENGAN PLAYWRIGHT BYPASS
+# ENDPOINT SCRAPING (STEALTH BYPASS MODE)
 # ==========================================
 @app.post("/api/v1/admin/products/scrape")
 async def scrape_products(req: ScrapeRequest):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    brand_name = req.brand.strip() if req.brand and req.brand.strip() != "" else "Produk Pilihan"
+    undertone = req.target_undertone if req.target_undertone else "neutral"
+
+    products_added = 0
+    scraped_data = []
+
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        
-        brand_name = req.brand.strip() if req.brand and req.brand.strip() != "" else "Produk Pilihan"
-        undertone = req.target_undertone if req.target_undertone else "neutral"
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-infobars",
+                    "--window-size=1920,1080"
+                ]
+            )
+            
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                viewport={"width": 1920, "height": 1080},
+                device_scale_factor=1
+            )
+            
+            page = await context.new_page()
+            # Menerapkan mode STEALTH untuk menghindari deteksi Cloudflare
+            await stealth_async(page)
+            
+            # Buka URL dan tunggu hingga jaringan diam (berhenti memuat JS/Data)
+            await page.goto(req.url, timeout=45000, wait_until="networkidle")
+            
+            # Scroll halus ke bawah untuk memuat gambar lazy load
+            for i in range(4):
+                await page.mouse.wheel(0, 1000)
+                await page.wait_for_timeout(1000)
 
-        products_added = 0
+            html_content = await page.content()
+            soup = BeautifulSoup(html_content, 'html.parser')
+            await browser.close()
 
-        try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--disable-blink-features=AutomationControlled",
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox",
-                        "--disable-dev-shm-usage"
-                    ]
-                )
-                
-                context = await browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    viewport={"width": 1920, "height": 1080}
-                )
-                
-                page = await context.new_page()
-                await page.goto(req.url, timeout=30000, wait_until="domcontentloaded")
-                await page.wait_for_timeout(4000)
-                
-                for _ in range(2):
-                    await page.evaluate("window.scrollBy(0, document.body.scrollHeight)")
-                    await page.wait_for_timeout(1500)
+            # --- METODE 1: JSON-LD (METADATA SEO) ---
+            ld_jsons = soup.find_all('script', type='application/ld+json')
+            for script in ld_jsons:
+                try:
+                    data = json.loads(script.string)
+                    items = data if isinstance(data, list) else [data]
+                    for item in items:
+                        if item.get('@type') in ['Product', 'ProductGroup']:
+                            name = item.get('name')
+                            image_url = ""
+                            img_data = item.get('image')
+                            if isinstance(img_data, list) and len(img_data) > 0:
+                                image_url = img_data[0]
+                            elif isinstance(img_data, str):
+                                image_url = img_data
+                            
+                            offers = item.get('offers', {})
+                            price = float(offers.get('price', 0)) if isinstance(offers, dict) else 0.0
+                            
+                            if name and price > 0:
+                                scraped_data.append((name, price, image_url))
+                except:
+                    continue
 
-                html_content = await page.content()
-                soup = BeautifulSoup(html_content, 'html.parser')
-                await browser.close()
+            # --- METODE 2: HEURISTIC PARSING (Mencari elemen dengan kata "Rp") ---
+            if not scraped_data:
+                # Cari semua elemen yang mengandung format harga
+                price_elements = soup.find_all(string=re.compile(r'(Rp|IDR)\s*[\d\.,]+', re.IGNORECASE))
+                for price_str in price_elements:
+                    parent = price_str.parent
+                    if not parent: continue
+                    
+                    # Naik ke wadah kontainer produk (misal: <a> atau <div> card)
+                    container = parent.find_parent(['a', 'div', 'li'])
+                    if not container: continue
+                    
+                    # Cari gambar di dalam kontainer
+                    img_tag = container.find('img')
+                    image_url = img_tag.get('src') or img_tag.get('data-src') or '' if img_tag else ''
+                    
+                    # Bersihkan harga
+                    raw_price = re.sub(r'[^\d]', '', price_str)
+                    price = float(raw_price) if raw_price else 0.0
+                    
+                    # Cari judul terpanjang di kontainer yang bukan harga
+                    texts = [t.strip() for t in container.stripped_strings if len(t.strip()) > 5 and 'Rp' not in t]
+                    name = texts[0] if texts else ""
+                    
+                    if name and price > 0:
+                        # Hindari duplikasi dalam list hasil
+                        if not any(d[0] == name for d in scraped_data):
+                            scraped_data.append((name, price, image_url))
+                            
+    except Exception as e:
+        print(f"Playwright Scrape Notice: {e}")
 
-                # Parsing JSON-LD SEO Metadata
-                ld_jsons = soup.find_all('script', type='application/ld+json')
-                for script in ld_jsons:
-                    try:
-                        data = json.loads(script.string)
-                        items = data if isinstance(data, list) else [data]
-                        for item in items:
-                            if item.get('@type') in ['Product', 'ProductGroup']:
-                                name = item.get('name')
-                                image_url = ""
-                                img_data = item.get('image')
-                                if isinstance(img_data, list) and len(img_data) > 0:
-                                    image_url = img_data[0]
-                                elif isinstance(img_data, str):
-                                    image_url = img_data
-                                
-                                offers = item.get('offers', {})
-                                price = float(offers.get('price', 0)) if isinstance(offers, dict) else 0.0
-                                
-                                if name:
-                                    cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (name,))
-                                    if not cursor.fetchone():
-                                        cursor.execute(
-                                            "INSERT INTO makeup_products (name, brand, price, target_undertone, image_url) VALUES (%s, %s, %s, %s, %s)", 
-                                            (name, brand_name, price, undertone, image_url)
-                                        )
-                                        products_added += 1
-                    except:
-                        continue
-        except Exception as e:
-            print(f"Playwright Scrape Notice: {e}")
+    # Simpan hasil scraping asli ke Database
+    for p_name, p_price, p_img in scraped_data:
+        cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (p_name,))
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT INTO makeup_products (name, brand, price, target_undertone, image_url) VALUES (%s, %s, %s, %s, %s)", 
+                (p_name, brand_name, p_price, undertone, p_img)
+            )
+            products_added += 1
 
-        # SMART FALLBACK: Memastikan katalog produk dan gambar selalu terisi valid
+    # JIKA BENAR-BENAR GAGAL / KOSONG, BARU GUNAKAN FALLBACK
+    if products_added == 0:
         sample_products = [
             (f"{brand_name} Signature Lip Velvet", brand_name, 129000.0, undertone, "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
             (f"{brand_name} Glow Liquid Foundation", brand_name, 189000.0, undertone, "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
             (f"{brand_name} Pressed Powder Compact", brand_name, 115000.0, undertone, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
             (f"{brand_name} Precision Eyebrow Pencil", brand_name, 75000.0, undertone, "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e"),
         ]
-        
         for p_name, p_brand, p_price, p_tone, p_img in sample_products:
             cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (p_name,))
             if not cursor.fetchone():
@@ -194,14 +233,16 @@ async def scrape_products(req: ScrapeRequest):
                     (p_name, p_brand, p_price, p_tone, p_img)
                 )
                 products_added += 1
-
+        
         conn.commit()
         cursor.close()
         conn.close()
-        return {"success": True, "message": f"Berhasil menyinkronkan {products_added} produk beserta gambar untuk brand {brand_name}."}
+        return {"success": True, "message": f"Web diblokir. Menyinkronkan {products_added} produk fallback untuk {brand_name}."}
 
-    except Exception as e:
-        return JSONResponse(status_code=200, content={"success": True, "message": "Berhasil sinkronisasi katalog produk."})
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return {"success": True, "message": f"Berhasil menarik {products_added} produk asli beserta gambar untuk brand {brand_name}."}
 
 
 # ==========================================
