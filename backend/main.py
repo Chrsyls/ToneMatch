@@ -32,7 +32,6 @@ class ProductCreate(BaseModel):
 
 class ScrapeRequest(BaseModel):
     brand: str
-    target_undertone: str = "neutral"  # Akan ditimpa secara cerdas jika terdeteksi otomatis
 
 def init_db():
     try:
@@ -76,15 +75,13 @@ def init_db():
 
 init_db()
 
-# --- FUNGSI CERDAS KLasifikasi UNDERTONE OTOMATIS ---
-def determine_undertone(product_name: str, default_undertone: str = "neutral") -> str:
+# --- FUNGSI KLASIFIKASI UNDERTONE CERDAS & SEIMBANG ---
+def determine_undertone(product_name: str, index: int = 0) -> str:
     name_lower = product_name.lower()
     
-    # Kata kunci untuk Warm Undertone
-    warm_keywords = ['warm', 'golden', 'honey', 'peach', 'tan', 'amber', 'caramel', 'yellow', 'sand', 'beige warm']
-    # Kata kunci untuk Cool Undertone
+    # Kata kunci spesifik
+    warm_keywords = ['warm', 'golden', 'honey', 'peach', 'tan', 'amber', 'caramel', 'yellow', 'sand', 'bronze']
     cool_keywords = ['cool', 'pink', 'rose', 'blue', 'fair', 'porcelain', 'ash', 'ruby', 'berry', 'magenta']
-    # Kata kunci untuk Neutral Undertone
     neutral_keywords = ['neutral', 'ivory', 'natural', 'nude', 'buff', 'classic', 'medium', 'universal']
     
     for kw in warm_keywords:
@@ -97,7 +94,9 @@ def determine_undertone(product_name: str, default_undertone: str = "neutral") -
         if kw in name_lower:
             return 'neutral'
             
-    return default_undertone.lower()
+    # Jika tidak ada kata kunci warna, distribusikan secara cerdas & seimbang (Rotasi: Warm, Cool, Neutral)
+    distribution = ['warm', 'cool', 'neutral']
+    return distribution[index % len(distribution)]
 
 
 @app.post("/api/v1/admin/products/scrape")
@@ -107,7 +106,6 @@ async def fetch_products(req: ScrapeRequest):
     
     brand_query = req.brand.strip().lower()
     display_brand = req.brand.strip().title()
-    base_undertone = req.target_undertone if req.target_undertone else "neutral"
     products_added = 0
 
     try:
@@ -117,7 +115,7 @@ async def fetch_products(req: ScrapeRequest):
         
         if response.status_code == 200 and len(response.json()) > 0:
             data = response.json()
-            for item in data[:20]:
+            for idx, item in enumerate(data[:20]):
                 name = item.get('name')
                 price_usd = float(item.get('price') or 12.0)
                 price_idr = price_usd * 15500.0
@@ -126,8 +124,7 @@ async def fetch_products(req: ScrapeRequest):
                     image_url = "https:" + image_url
 
                 if name:
-                    # Klasifikasi undertone secara otomatis berdasarkan nama produk
-                    smart_undertone = determine_undertone(name, base_undertone)
+                    smart_undertone = determine_undertone(name, idx)
 
                     cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (name,))
                     if not cursor.fetchone():
@@ -137,59 +134,59 @@ async def fetch_products(req: ScrapeRequest):
                         )
                         products_added += 1
 
-        # 2. Direktori Katalog Lokal Indonesia Lengkap (Wardah, Emina, Somethinc, Skintific, dll)
+        # 2. Direktori Katalog Lokal Indonesia Lengkap
         extended_local_catalogs = {
             "wardah": [
-                ("Colorfit Velvet Matte Lip Mousse", 73000.0, "neutral", "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
-                ("Exclusive Liquid Foundation Warm Sand", 82000.0, "warm", "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
-                ("Lightening Face Toner", 24000.0, "neutral", "https://images.unsplash.com/photo-1620916566398-39f1143ab7be"),
-                ("Colorfit Fresh Matte Lip Ink Rose", 65000.0, "cool", "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e"),
-                ("Lightening Liquid Concealer Ivory", 41000.0, "neutral", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796")
+                ("Colorfit Velvet Matte Lip Mousse", 73000.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
+                ("Exclusive Liquid Foundation Warm Sand", 82000.0, "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
+                ("Lightening Face Toner", 24000.0, "https://images.unsplash.com/photo-1620916566398-39f1143ab7be"),
+                ("Colorfit Fresh Matte Lip Ink Rose", 65000.0, "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e"),
+                ("Lightening Liquid Concealer Ivory", 41000.0, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796")
             ],
             "emina": [
-                ("Creamatte Lip Cream Peach", 47500.0, "warm", "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
-                ("Bare with Me Mineral Cushion Natural", 126000.0, "neutral", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
-                ("Glossy Stain Lip Tint Berry", 49000.0, "cool", "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e"),
-                ("Daily Matte Loose Powder", 62000.0, "neutral", "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e")
+                ("Creamatte Lip Cream Peach", 47500.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
+                ("Bare with Me Mineral Cushion Natural", 126000.0, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("Glossy Stain Lip Tint Berry", 49000.0, "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e"),
+                ("Daily Matte Loose Powder", 62000.0, "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e")
             ],
             "somethinc": [
-                ("Copy Paste Breathable Cushion Golden", 185900.0, "warm", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
-                ("Ombrella Lip Totem Tint Rose", 59000.0, "cool", "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
-                ("Holyshield! Sunscreen Corrector", 149000.0, "neutral", "https://images.unsplash.com/photo-1620916566398-39f1143ab7be"),
-                ("Diamond Phyto Serum", 139000.0, "neutral", "https://images.unsplash.com/photo-1556228720-195a672e8a03")
+                ("Copy Paste Breathable Cushion Golden", 185900.0, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("Ombrella Lip Totem Tint Rose", 59000.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
+                ("Holyshield! Sunscreen Corrector", 149000.0, "https://images.unsplash.com/photo-1620916566398-39f1143ab7be"),
+                ("Diamond Phyto Serum", 139000.0, "https://images.unsplash.com/photo-1556228720-195a672e8a03")
             ],
             "blp": [
-                ("Lip Coat Butter Peach", 139000.0, "warm", "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
-                ("Face Powder Medium Beige", 149000.0, "neutral", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
-                ("Eye Brow Definition", 120000.0, "neutral", "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e")
+                ("Lip Coat Butter Peach", 139000.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
+                ("Face Powder Medium Beige", 149000.0, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("Eye Brow Definition", 120000.0, "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e")
             ],
             "skintific": [
-                ("5X Ceramide Barrier Repair Gel", 139000.0, "neutral", "https://images.unsplash.com/photo-1556228720-195a672e8a03"),
-                ("Cover All Perfect Cushion Ivory", 169000.0, "neutral", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
-                ("All Day Light Sunscreen Mist", 109000.0, "neutral", "https://images.unsplash.com/photo-1620916566398-39f1143ab7be")
+                ("5X Ceramide Barrier Repair Gel", 139000.0, "https://images.unsplash.com/photo-1556228720-195a672e8a03"),
+                ("Cover All Perfect Cushion Ivory", 169000.0, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("All Day Light Sunscreen Mist", 109000.0, "https://images.unsplash.com/photo-1620916566398-39f1143ab7be")
             ],
             "make over": [
-                ("Powerstay Matte Powder Foundation Warm", 175000.0, "warm", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
-                ("Hydrastay Liquid Whip Foundation Rose", 165000.0, "cool", "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
-                ("Rouge Power Matte Lip Cream", 129000.0, "neutral", "https://images.unsplash.com/photo-1586495777744-4413f21062fa")
+                ("Powerstay Matte Powder Foundation Warm", 175000.0, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("Hydrastay Liquid Whip Foundation Rose", 165000.0, "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
+                ("Rouge Power Matte Lip Cream", 129000.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa")
             ],
             "esqa": [
-                ("Flawless Liquid Concealer Natural", 145000.0, "neutral", "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
-                ("Goddess Eyeshadow Palette", 195000.0, "neutral", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
-                ("Slick Lip Tint Berry", 125000.0, "cool", "https://images.unsplash.com/photo-1586495777744-4413f21062fa")
+                ("Flawless Liquid Concealer Natural", 145000.0, "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
+                ("Goddess Eyeshadow Palette", 195000.0, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("Slick Lip Tint Berry", 125000.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa")
             ],
             "mop": [
-                ("Mother of Pearl Blur Setting Powder", 159000.0, "neutral", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
-                ("MOP Eyeshadow Palette Golden", 289000.0, "warm", "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e"),
-                ("Anti Socialite Liquid Lipstick", 129000.0, "neutral", "https://images.unsplash.com/photo-1586495777744-4413f21062fa")
+                ("Mother of Pearl Blur Setting Powder", 159000.0, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("MOP Eyeshadow Palette Golden", 289000.0, "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e"),
+                ("Anti Socialite Liquid Lipstick", 129000.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa")
             ]
         }
 
         matched_key = next((k for k in extended_local_catalogs.keys() if k in brand_query), None)
         
         if matched_key:
-            for p_name, p_price, p_tone, p_img in extended_local_catalogs[matched_key]:
-                smart_undertone = determine_undertone(p_name, p_tone)
+            for idx, (p_name, p_price, p_img) in enumerate(extended_local_catalogs[matched_key]):
+                smart_undertone = determine_undertone(p_name, idx)
                 cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (p_name,))
                 if not cursor.fetchone():
                     cursor.execute(
@@ -205,8 +202,8 @@ async def fetch_products(req: ScrapeRequest):
                 (f"{display_brand} Perfect Glow Pink Foundation", 189000.0, "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
                 (f"{display_brand} Translucent Neutral Setting Powder", 115000.0, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796")
             ]
-            for p_name, p_price, p_img in dynamic_defaults:
-                smart_undertone = determine_undertone(p_name, base_undertone)
+            for idx, (p_name, p_price, p_img) in enumerate(dynamic_defaults):
+                smart_undertone = determine_undertone(p_name, idx)
                 cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (p_name,))
                 if not cursor.fetchone():
                     cursor.execute(
@@ -218,7 +215,7 @@ async def fetch_products(req: ScrapeRequest):
         conn.commit()
         cursor.close()
         conn.close()
-        return {"success": True, "message": f"Berhasil menambah {products_added} produk dengan kategori undertone otomatis untuk {display_brand}."}
+        return {"success": True, "message": f"Berhasil menambah {products_added} produk dengan distribusi undertone seimbang untuk {display_brand}."}
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": f"Kesalahan sistem: {str(e)}"})
@@ -426,7 +423,7 @@ def get_user_profile(user_id: str):
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 @app.put("/api/v1/users/{user_id}")
-async def update_user_profile(
+def update_user_profile(
     user_id: str, name: str = Form(None), email: str = Form(None), role: str = Form(None),
     remove_avatar: str = Form("false"), avatar: UploadFile | None = File(None)
 ):
@@ -443,7 +440,7 @@ async def update_user_profile(
             file_name = f"avatar_{user_id}_{int(time.time())}_{avatar.filename}"
             avatar_path = f"uploads/{file_name}"
             with open(avatar_path, "wb") as buffer:
-                buffer.write(await avatar.read())
+                buffer.write(avatar.file.read())
         
         new_name = name if name is not None and name.strip() != "" else ("Alvito Aryo" if not user else user['name'])
         new_email = email if email is not None and email.strip() != "" else ("test@tonematch.app" if not user else user['email'])

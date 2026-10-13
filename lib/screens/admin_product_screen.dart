@@ -43,10 +43,9 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
     }
   }
 
-  // MODAL PENARIKAN KATALOG BERDASARKAN NAMA BRAND (INSTAN & TANPA URL)
+  // MODAL PENARIKAN KATALOG OTOMATIS (DISEMPURNAKAN: TANPA DROPDOWN UNDERTONE)
   Future<void> _showScrapeDialog() async {
     final TextEditingController brandController = TextEditingController();
-    String undertone = 'neutral';
     bool isScraping = false;
 
     await showDialog(
@@ -62,22 +61,19 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Ketik nama brand (contoh: Maybelline, Nyx, Wardah, Somethinc, BLP). Sistem akan menarik produk dan gambar secara instan.', style: TextStyle(fontSize: 13, color: Colors.black87)),
+                    const Text(
+                      'Ketik nama brand (contoh: Maybelline, Wardah, Emina, Skintific, Make Over). Kategori undertone akan dideteksi oleh sistem secara otomatis.',
+                      style: TextStyle(fontSize: 13, color: Colors.black87),
+                    ),
                     const SizedBox(height: 16),
                     TextField(
                       controller: brandController, 
-                      decoration: const InputDecoration(labelText: 'Nama Brand', border: OutlineInputBorder(), isDense: true, hintText: 'Cth: Wardah')
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      decoration: const InputDecoration(labelText: 'Target Undertone', border: OutlineInputBorder(), isDense: true),
-                      value: undertone,
-                      items: const [
-                        DropdownMenuItem(value: 'warm', child: Text('Warm')),
-                        DropdownMenuItem(value: 'cool', child: Text('Cool')),
-                        DropdownMenuItem(value: 'neutral', child: Text('Neutral')),
-                      ],
-                      onChanged: (val) => undertone = val ?? 'neutral',
+                      decoration: const InputDecoration(
+                        labelText: 'Nama Brand', 
+                        border: OutlineInputBorder(), 
+                        isDense: true, 
+                        hintText: 'Cth: Wardah'
+                      ),
                     ),
                     if (isScraping) 
                       const Padding(
@@ -96,31 +92,37 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63)),
                   onPressed: isScraping ? null : () async {
                     if (brandController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nama Brand tidak boleh kosong!'), backgroundColor: Colors.red));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Nama Brand tidak boleh kosong!'), backgroundColor: Colors.red)
+                      );
                       return;
                     }
 
                     setStateDialog(() => isScraping = true);
                     try {
+                      // Mengirim request ke backend tanpa parameter undertone manual
                       final response = await http.post(
                         Uri.parse('$baseUrl/api/v1/admin/products/scrape'),
                         headers: {'Content-Type': 'application/json'},
                         body: jsonEncode({
                           'brand': brandController.text.trim(),
-                          'target_undertone': undertone
                         }),
                       );
 
                       final data = json.decode(response.body);
                       if (response.statusCode == 200 && data['success'] == true) {
                         if (mounted) Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(data['message']), backgroundColor: Colors.green));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(data['message']), backgroundColor: Colors.green)
+                        );
                         _fetchProducts(); 
                       } else {
                         throw Exception(data['error'] ?? data['message'] ?? 'Gagal memproses data');
                       }
                     } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red)
+                      );
                     } finally {
                       if (mounted && isScraping) {
                         setStateDialog(() => isScraping = false);
@@ -231,6 +233,17 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
     _fetchProducts();
   }
 
+  Color _getUndertoneColor(String undertone) {
+    switch (undertone.toLowerCase()) {
+      case 'warm':
+        return Colors.orange.shade700;
+      case 'cool':
+        return Colors.blue.shade700;
+      default:
+        return Colors.purple.shade700;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -280,36 +293,60 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                               itemCount: _products.length,
                               itemBuilder: (context, index) {
                                 final p = _products[index];
+                                final undertoneVal = p['undertone'] ?? 'neutral';
+                                
                                 return Card(
                                   margin: const EdgeInsets.only(bottom: 12),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                  child: ListTile(
-                                    leading: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: p['image_url'] != null && p['image_url'].toString().isNotEmpty
-                                          ? Image.network(
-                                              p['image_url'],
-                                              width: 50,
-                                              height: 50,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 40, color: Colors.grey),
-                                            )
-                                          : Container(
-                                              width: 50,
-                                              height: 50,
-                                              color: Colors.pink.shade50,
-                                              child: const Icon(Icons.face_retouching_natural, color: Color(0xFFE91E63)),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: ListTile(
+                                      leading: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: p['image_url'] != null && p['image_url'].toString().isNotEmpty
+                                            ? Image.network(
+                                                p['image_url'],
+                                                width: 50,
+                                                height: 50,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                                              )
+                                            : Container(
+                                                width: 50,
+                                                height: 50,
+                                                color: Colors.pink.shade50,
+                                                child: const Icon(Icons.face_retouching_natural, color: Color(0xFFE91E63)),
+                                              ),
+                                      ),
+                                      title: Text(p['product_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      subtitle: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const SizedBox(height: 4),
+                                          Text('${p['brand'] ?? '-'} • Rp ${p['price'] ?? 0}'),
+                                          const SizedBox(height: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: _getUndertoneColor(undertoneVal).withOpacity(0.12),
+                                              borderRadius: BorderRadius.circular(6),
+                                              border: Border.all(color: _getUndertoneColor(undertoneVal), width: 0.8)
                                             ),
-                                    ),
-                                    title: Text(p['product_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                    subtitle: Text('${p['brand'] ?? '-'} • Rp ${p['price'] ?? 0}\nUndertone: ${p['undertone'] ?? '-'}'),
-                                    isThreeLine: true,
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showAddEditModal(product: p)),
-                                        IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteProduct(p['product_id'].toString())),
-                                      ],
+                                            child: Text(
+                                              'Undertone: ${undertoneVal.toUpperCase()}',
+                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _getUndertoneColor(undertoneVal)),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      isThreeLine: true,
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showAddEditModal(product: p)),
+                                          IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteProduct(p['product_id'].toString())),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 );
