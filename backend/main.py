@@ -7,6 +7,8 @@ import os
 import time
 from datetime import datetime
 import requests
+import urllib.parse
+from bs4 import BeautifulSoup
 
 app = FastAPI()
 
@@ -30,7 +32,7 @@ class ProductCreate(BaseModel):
 
 class ScrapeRequest(BaseModel):
     brand: str
-    target_undertone: str = "neutral"
+    target_undertone: str = "neutral"  # Akan ditimpa secara cerdas jika terdeteksi otomatis
 
 def init_db():
     try:
@@ -74,101 +76,153 @@ def init_db():
 
 init_db()
 
-# ==========================================
-# ENDPOINT INTEGRASI API (SANGAT CEPAT & ANTI GAGAL)
-# ==========================================
+# --- FUNGSI CERDAS KLasifikasi UNDERTONE OTOMATIS ---
+def determine_undertone(product_name: str, default_undertone: str = "neutral") -> str:
+    name_lower = product_name.lower()
+    
+    # Kata kunci untuk Warm Undertone
+    warm_keywords = ['warm', 'golden', 'honey', 'peach', 'tan', 'amber', 'caramel', 'yellow', 'sand', 'beige warm']
+    # Kata kunci untuk Cool Undertone
+    cool_keywords = ['cool', 'pink', 'rose', 'blue', 'fair', 'porcelain', 'ash', 'ruby', 'berry', 'magenta']
+    # Kata kunci untuk Neutral Undertone
+    neutral_keywords = ['neutral', 'ivory', 'natural', 'nude', 'buff', 'classic', 'medium', 'universal']
+    
+    for kw in warm_keywords:
+        if kw in name_lower:
+            return 'warm'
+    for kw in cool_keywords:
+        if kw in name_lower:
+            return 'cool'
+    for kw in neutral_keywords:
+        if kw in name_lower:
+            return 'neutral'
+            
+    return default_undertone.lower()
+
+
 @app.post("/api/v1/admin/products/scrape")
 async def fetch_products(req: ScrapeRequest):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    brand_name = req.brand.strip().lower()
-    display_brand = brand_name.title()
-    undertone = req.target_undertone if req.target_undertone else "neutral"
+    brand_query = req.brand.strip().lower()
+    display_brand = req.brand.strip().title()
+    base_undertone = req.target_undertone if req.target_undertone else "neutral"
     products_added = 0
 
     try:
-        # 1. Coba Tarik Data dari Public Makeup API (Brand Internasional)
-        api_url = f"http://makeup-api.herokuapp.com/api/v1/products.json?brand={brand_name}"
-        response = requests.get(api_url, timeout=10)
+        # 1. Tarik Data dari Public Makeup API (Global Brands)
+        api_url = f"http://makeup-api.herokuapp.com/api/v1/products.json?brand={brand_query}"
+        response = requests.get(api_url, timeout=8)
         
         if response.status_code == 200 and len(response.json()) > 0:
             data = response.json()
-            # Ambil maksimal 15 produk agar rapi
-            for item in data[:15]:
+            for item in data[:20]:
                 name = item.get('name')
-                price_usd = float(item.get('price') or 10.0)
-                price_idr = price_usd * 15500.0 # Konversi ke Rupiah
+                price_usd = float(item.get('price') or 12.0)
+                price_idr = price_usd * 15500.0
                 image_url = item.get('image_link', '')
-                
-                # Perbaikan link gambar yang error dari API
                 if image_url and image_url.startswith('//'):
                     image_url = "https:" + image_url
 
                 if name:
+                    # Klasifikasi undertone secara otomatis berdasarkan nama produk
+                    smart_undertone = determine_undertone(name, base_undertone)
+
                     cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (name,))
                     if not cursor.fetchone():
                         cursor.execute(
                             "INSERT INTO makeup_products (name, brand, price, target_undertone, image_url) VALUES (%s, %s, %s, %s, %s)", 
-                            (name, display_brand, price_idr, undertone, image_url)
+                            (name, display_brand, price_idr, smart_undertone, image_url)
                         )
                         products_added += 1
-        else:
-            # 2. KATALOG LOKAL INTERNAL (Untuk Brand Indonesia yang tidak ada di API)
-            local_catalogs = {
-                "wardah": [
-                    ("Colorfit Velvet Matte Lip Mousse", 73000.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
-                    ("Exclusive Liquid Foundation", 82000.0, "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
-                    ("Lightening Face Toner", 24000.0, "https://images.unsplash.com/photo-1620916566398-39f1143ab7be")
-                ],
-                "emina": [
-                    ("Creamatte Lip Cream", 47500.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
-                    ("Bare with Me Mineral Cushion", 126000.0, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796")
-                ],
-                "somethinc": [
-                    ("Copy Paste Breathable Cushion", 185900.0, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
-                    ("Ombrella Lip Totem Tint", 59000.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa")
-                ],
-                "blp": [
-                    ("Lip Coat", 139000.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
-                    ("Face Powder", 149000.0, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796")
-                ]
-            }
-            
-            # Cari keyword brand di katalog lokal
-            matched_key = next((k for k in local_catalogs.keys() if k in brand_name), None)
-            
-            if matched_key:
-                for p_name, p_price, p_img in local_catalogs[matched_key]:
-                    cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (p_name,))
-                    if not cursor.fetchone():
-                        cursor.execute(
-                            "INSERT INTO makeup_products (name, brand, price, target_undertone, image_url) VALUES (%s, %s, %s, %s, %s)", 
-                            (p_name, display_brand, p_price, undertone, p_img)
-                        )
-                        products_added += 1
-            else:
-                # 3. KONDISI DEFAULT JIKA BRAND SAMA SEKALI TIDAK DIKENAL
-                default_products = [
-                    (f"{display_brand} Signature Lip Velvet", 129000.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
-                    (f"{display_brand} Glow Liquid Foundation", 189000.0, "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
-                ]
-                for p_name, p_price, p_img in default_products:
-                    cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (p_name,))
-                    if not cursor.fetchone():
-                        cursor.execute(
-                            "INSERT INTO makeup_products (name, brand, price, target_undertone, image_url) VALUES (%s, %s, %s, %s, %s)", 
-                            (p_name, display_brand, p_price, undertone, p_img)
-                        )
-                        products_added += 1
+
+        # 2. Direktori Katalog Lokal Indonesia Lengkap (Wardah, Emina, Somethinc, Skintific, dll)
+        extended_local_catalogs = {
+            "wardah": [
+                ("Colorfit Velvet Matte Lip Mousse", 73000.0, "neutral", "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
+                ("Exclusive Liquid Foundation Warm Sand", 82000.0, "warm", "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
+                ("Lightening Face Toner", 24000.0, "neutral", "https://images.unsplash.com/photo-1620916566398-39f1143ab7be"),
+                ("Colorfit Fresh Matte Lip Ink Rose", 65000.0, "cool", "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e"),
+                ("Lightening Liquid Concealer Ivory", 41000.0, "neutral", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796")
+            ],
+            "emina": [
+                ("Creamatte Lip Cream Peach", 47500.0, "warm", "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
+                ("Bare with Me Mineral Cushion Natural", 126000.0, "neutral", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("Glossy Stain Lip Tint Berry", 49000.0, "cool", "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e"),
+                ("Daily Matte Loose Powder", 62000.0, "neutral", "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e")
+            ],
+            "somethinc": [
+                ("Copy Paste Breathable Cushion Golden", 185900.0, "warm", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("Ombrella Lip Totem Tint Rose", 59000.0, "cool", "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
+                ("Holyshield! Sunscreen Corrector", 149000.0, "neutral", "https://images.unsplash.com/photo-1620916566398-39f1143ab7be"),
+                ("Diamond Phyto Serum", 139000.0, "neutral", "https://images.unsplash.com/photo-1556228720-195a672e8a03")
+            ],
+            "blp": [
+                ("Lip Coat Butter Peach", 139000.0, "warm", "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
+                ("Face Powder Medium Beige", 149000.0, "neutral", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("Eye Brow Definition", 120000.0, "neutral", "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e")
+            ],
+            "skintific": [
+                ("5X Ceramide Barrier Repair Gel", 139000.0, "neutral", "https://images.unsplash.com/photo-1556228720-195a672e8a03"),
+                ("Cover All Perfect Cushion Ivory", 169000.0, "neutral", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("All Day Light Sunscreen Mist", 109000.0, "neutral", "https://images.unsplash.com/photo-1620916566398-39f1143ab7be")
+            ],
+            "make over": [
+                ("Powerstay Matte Powder Foundation Warm", 175000.0, "warm", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("Hydrastay Liquid Whip Foundation Rose", 165000.0, "cool", "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
+                ("Rouge Power Matte Lip Cream", 129000.0, "neutral", "https://images.unsplash.com/photo-1586495777744-4413f21062fa")
+            ],
+            "esqa": [
+                ("Flawless Liquid Concealer Natural", 145000.0, "neutral", "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
+                ("Goddess Eyeshadow Palette", 195000.0, "neutral", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("Slick Lip Tint Berry", 125000.0, "cool", "https://images.unsplash.com/photo-1586495777744-4413f21062fa")
+            ],
+            "mop": [
+                ("Mother of Pearl Blur Setting Powder", 159000.0, "neutral", "https://images.unsplash.com/photo-1512496015851-a90fb38ba796"),
+                ("MOP Eyeshadow Palette Golden", 289000.0, "warm", "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e"),
+                ("Anti Socialite Liquid Lipstick", 129000.0, "neutral", "https://images.unsplash.com/photo-1586495777744-4413f21062fa")
+            ]
+        }
+
+        matched_key = next((k for k in extended_local_catalogs.keys() if k in brand_query), None)
+        
+        if matched_key:
+            for p_name, p_price, p_tone, p_img in extended_local_catalogs[matched_key]:
+                smart_undertone = determine_undertone(p_name, p_tone)
+                cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (p_name,))
+                if not cursor.fetchone():
+                    cursor.execute(
+                        "INSERT INTO makeup_products (name, brand, price, target_undertone, image_url) VALUES (%s, %s, %s, %s, %s)", 
+                        (p_name, display_brand, p_price, smart_undertone, p_img)
+                    )
+                    products_added += 1
+
+        # 3. Dynamic Generator untuk Brand Baru Lainnya
+        if products_added == 0 and len(response.json()) == 0:
+            dynamic_defaults = [
+                (f"{display_brand} Signature Matte Golden Lipstick", 129000.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
+                (f"{display_brand} Perfect Glow Pink Foundation", 189000.0, "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e"),
+                (f"{display_brand} Translucent Neutral Setting Powder", 115000.0, "https://images.unsplash.com/photo-1512496015851-a90fb38ba796")
+            ]
+            for p_name, p_price, p_img in dynamic_defaults:
+                smart_undertone = determine_undertone(p_name, base_undertone)
+                cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (p_name,))
+                if not cursor.fetchone():
+                    cursor.execute(
+                        "INSERT INTO makeup_products (name, brand, price, target_undertone, image_url) VALUES (%s, %s, %s, %s, %s)", 
+                        (p_name, display_brand, p_price, smart_undertone, p_img)
+                    )
+                    products_added += 1
 
         conn.commit()
         cursor.close()
         conn.close()
-        return {"success": True, "message": f"Berhasil menarik {products_added} produk instan untuk brand {display_brand}."}
+        return {"success": True, "message": f"Berhasil menambah {products_added} produk dengan kategori undertone otomatis untuk {display_brand}."}
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": f"Kesalahan sistem: {str(e)}"})
+
 
 # ==========================================
 # ENDPOINT STANDAR
@@ -200,7 +254,7 @@ def get_recommendations(undertone: str):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT product_id, name AS product_name, price, brand, image_url FROM makeup_products WHERE target_undertone = %s OR target_undertone = 'neutral' LIMIT 10", (undertone.lower(),))
+        cursor.execute("SELECT product_id, name AS product_name, price, brand, image_url, target_undertone AS undertone FROM makeup_products WHERE target_undertone = %s OR target_undertone = 'neutral' LIMIT 10", (undertone.lower(),))
         products = cursor.fetchall()
         for p in products:
             if p.get('price') is not None:
