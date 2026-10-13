@@ -6,9 +6,9 @@ import mysql.connector
 import os
 import time
 from datetime import datetime
-import requests
 from bs4 import BeautifulSoup
 import re
+import cloudscraper # Library baru penembus Anti-Bot
 
 app = FastAPI()
 
@@ -29,7 +29,6 @@ class ProductCreate(BaseModel):
     price: float
     undertone: str
 
-# Model Scraping (Jauh lebih sederhana, hanya URL, Brand, Undertone)
 class ScrapeRequest(BaseModel):
     url: str
     brand: str
@@ -71,7 +70,6 @@ def init_db():
             )
         """)
         
-        # 1. BUAT TABEL KONFIGURASI SCRAPING
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS scraping_configs (
                 config_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -83,7 +81,6 @@ def init_db():
             )
         """)
         
-        # 2. ISI DATA BAWAAN JIKA KOSONG
         cursor.execute("SELECT COUNT(*) FROM scraping_configs")
         if cursor.fetchone()[0] == 0:
             default_configs = [
@@ -110,7 +107,6 @@ async def scrape_products(req: ScrapeRequest):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        # Cari konfigurasi class HTML berdasarkan URL yang dikirim
         cursor.execute("SELECT * FROM scraping_configs")
         configs = cursor.fetchall()
         
@@ -120,44 +116,68 @@ async def scrape_products(req: ScrapeRequest):
                 selected_config = config
                 break
                 
-        # Gunakan default jika tidak ada domain yang cocok
         if not selected_config:
             selected_config = next((c for c in configs if c['domain_keyword'] == 'default'), None)
 
-        if not selected_config:
-            return JSONResponse(status_code=400, content={"success": False, "message": "Konfigurasi web scraping tidak ditemukan di database."})
-
-        # Ambil nama class dari database
         container_cls = selected_config['container_class']
         title_cls = selected_config['title_class']
         price_cls = selected_config['price_class']
 
-        # Mulai proses scraping
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
-        }
-        response = requests.get(req.url, headers=headers, timeout=15)
+        # Menggunakan CloudScraper untuk menembus proteksi Anti-Bot
+        scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
+        response = scraper.get(req.url, timeout=20)
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Mencari data menggunakan class dari database
         items = soup.find_all(class_=container_cls) 
-        
-        if not items:
-            return JSONResponse(status_code=400, content={"success": False, "message": f"Tidak ada produk. Pastikan format HTML web {selected_config['website_name']} sesuai dengan setting di database."})
-
         products_added = 0
-        for item in items:
-            name_elem = item.find(class_=title_cls) 
-            price_elem = item.find(class_=price_cls)
 
-            if name_elem and price_elem:
-                name = name_elem.text.strip()
-                raw_price = re.sub(r'[^\d]', '', price_elem.text)
-                price = float(raw_price) if raw_price else 0.0
+        if items:
+            # Metode 1: Scraping Standar Berdasarkan Class
+            for item in items:
+                name_elem = item.find(class_=title_cls) 
+                price_elem = item.find(class_=price_cls)
 
-                sql = "INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)"
-                cursor.execute(sql, (name, req.brand, price, req.target_undertone))
-                products_added += 1
+                if name_elem and price_elem:
+                    name = name_elem.text.strip()
+                    raw_price = re.sub(r'[^\d]', '', price_elem.text)
+                    price = float(raw_price) if raw_price else 0.0
+
+                    # Cek duplikat
+                    cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (name,))
+                    if not cursor.fetchone():
+                        sql = "INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)"
+                        cursor.execute(sql, (name, req.brand, price, req.target_undertone))
+                        products_added += 1
+        else:
+            # Metode 2: SMART HEURISTIC FALLBACK (Auto-Detect tanpa class HTML)
+            # Berguna untuk web dengan JavaScript kuat (Sephora, Sociolla)
+            brand_elements = soup.find_all(string=re.compile(req.brand, re.IGNORECASE))
+            
+            for el in brand_elements:
+                parent = el.parent
+                if parent:
+                    # Naik 3 level ke atas wadah pembungkus
+                    container = parent.parent.parent if parent.parent else parent
+                    if container:
+                        text_content = container.get_text(separator=' ')
+                        # Cari pola harga Rp / IDR di sekitar nama brand
+                        price_match = re.search(r'(?:Rp|IDR|Rp\.)\s*([\d\.,]+)', text_content, re.IGNORECASE)
+                        
+                        if price_match:
+                            name = el.strip()
+                            if len(name) > 3 and len(name) < 150:
+                                raw_price = re.sub(r'[^\d]', '', price_match.group(1))
+                                price = float(raw_price) if raw_price else 0.0
+                                
+                                # Cek duplikat
+                                cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (name,))
+                                if not cursor.fetchone():
+                                    sql = "INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)"
+                                    cursor.execute(sql, (name, req.brand, price, req.target_undertone))
+                                    products_added += 1
+                                    
+            if products_added == 0:
+                return JSONResponse(status_code=400, content={"success": False, "message": "Gagal mengekstrak data. Halaman menggunakan rendering JavaScript ketat atau diblokir Captcha sepenuhnya."})
 
         conn.commit()
         cursor.close()
@@ -169,7 +189,6 @@ async def scrape_products(req: ScrapeRequest):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": f"Gagal scraping: {str(e)}"})
 
-# ==================== ENDPOINT LAINNYA TETAP SAMA ====================
 
 @app.post("/api/v1/analyze/undertone")
 async def analyze_undertone(image: UploadFile = File(...)):
