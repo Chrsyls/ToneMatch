@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import '../widgets/dynamic_background.dart';
 
 class ResultScreen extends StatefulWidget {
@@ -20,19 +21,31 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen> {
   List<dynamic> _recommendations = [];
+  List<dynamic> _filteredRecommendations = [];
   bool _isLoading = true;
-  final String baseUrl = 'http://10.4.89.111:8000'; // IP Baru Anda
+  final String baseUrl = 'http://10.4.89.111:8000';
+
+  // Controller untuk fitur pencarian & filter kategori
+  final TextEditingController _searchController = TextEditingController();
+  String _selectedFilter = 'all'; // 'all', 'warm', 'cool', 'neutral'
 
   @override
   void initState() {
     super.initState();
     _fetchRecommendations();
+    _searchController.addListener(_filterProducts);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchRecommendations() async {
     setState(() => _isLoading = true);
     try {
-      final uri = Uri.parse('$baseUrl/api/v1/products?undertone=${widget.detectedUndertone}');
+      final uri = Uri.parse('$baseUrl/api/v1/recommendations/${widget.detectedUndertone}');
       final response = await http.get(uri);
       
       if (response.statusCode == 200) {
@@ -40,17 +53,34 @@ class _ResultScreenState extends State<ResultScreen> {
         if (data['success'] == true) {
           setState(() {
             _recommendations = data['data'] ?? [];
+            _filteredRecommendations = _recommendations;
           });
         }
       }
     } catch (e) {
       debugPrint("Gagal memuat rekomendasi: $e");
     } finally {
-      // PENYELESAIAN BUG: Pastikan loading selalu dimatikan walau gagal/kosong
       if (mounted) {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  // Logika Filter & Pencarian Real-Time (Fitur 2)
+  void _filterProducts() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredRecommendations = _recommendations.where((prod) {
+        final name = (prod['product_name'] ?? '').toLowerCase();
+        final brand = (prod['brand'] ?? '').toLowerCase();
+        final undertone = (prod['undertone'] ?? widget.detectedUndertone).toLowerCase();
+
+        final matchesSearch = name.contains(query) || brand.contains(query);
+        final matchesFilter = _selectedFilter == 'all' || undertone == _selectedFilter;
+
+        return matchesSearch && matchesFilter;
+      }).toList();
+    });
   }
 
   Future<void> _toggleSaveProduct(String productId, bool isCurrentlySaved) async {
@@ -62,7 +92,7 @@ class _ResultScreenState extends State<ResultScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(isCurrentlySaved ? 'Produk dihapus dari tersimpan' : 'Produk berhasil disimpan! ❤️')),
         );
-        _fetchRecommendations(); // Refresh status ikon hati
+        _fetchRecommendations(); 
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal mengubah status simpan')));
@@ -79,6 +109,89 @@ class _ResultScreenState extends State<ResultScreen> {
         body: json.encode({"user_id": "usr_dummy_01", "product_id": id}),
       );
     }
+  }
+
+  String _formatRupiah(dynamic price) {
+    final currencyFormatter = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+    double parsedPrice = double.tryParse(price.toString()) ?? 0.0;
+    return currencyFormatter.format(parsedPrice);
+  }
+
+  // Bottom Sheet Detail Produk (Fitur 3)
+  void _showProductDetail(Map<String, dynamic> prod) {
+    final imageUrl = prod['image_url'];
+    final productName = prod['product_name'] ?? 'Makeup Item';
+    final brand = prod['brand'] ?? 'Brand Kosmetik';
+    final price = _formatRupiah(prod['price'] ?? 0);
+    final undertone = (prod['undertone'] ?? widget.detectedUndertone).toUpperCase();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: imageUrl != null && imageUrl.toString().isNotEmpty
+                      ? Image.network(imageUrl, width: 120, height: 120, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.image, size: 80, color: Colors.grey))
+                      : Container(width: 120, height: 120, color: Colors.pink.shade50, child: const Icon(Icons.brush, size: 50, color: Color(0xFFE91E63))),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(brand, style: const TextStyle(color: Color(0xFFE91E63), fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 4),
+              Text(productName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(price, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(color: const Color(0xFFFCE4EC), borderRadius: BorderRadius.circular(8)),
+                    child: Text('Undertone: $undertone', style: const TextStyle(color: Color(0xFFE91E63), fontWeight: FontWeight.bold, fontSize: 12)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text('Deskripsi & Kesesuaian:', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
+              const SizedBox(height: 6),
+              Text(
+                'Produk ini dirancang khusus untuk menyatu sempurna dengan rona kulit berkarakter $undertone. Memberikan hasil akhir yang natural, tahan lama, dan merata.',
+                style: const TextStyle(color: Color(0xFF7A5C61), height: 1.4),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63)).runtimeType == Object
+                  ? ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63), minimumSize: const Size(double.infinity, 50)),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _toggleSaveProduct(prod['product_id'].toString(), prod['is_saved'] ?? false);
+                      },
+                      child: const Text('Simpan ke Favorit ❤️', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    )
+                  : Container(),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -143,40 +256,79 @@ class _ResultScreenState extends State<ResultScreen> {
                       const Text('Rekomendasi Produk Makeup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
                       const SizedBox(height: 16),
                       
+                      // Kolom Pencarian Produk (Fitur 2)
+                      TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Cari produk atau brand...',
+                          prefixIcon: const Icon(Icons.search, color: Color(0xFFE91E63)),
+                          filled: true,
+                          fillColor: Colors.white.withOpacity(0.5),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                          isDense: true,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Tombol Filter Kategori Undertone (Fitur 2)
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _buildFilterChip('Semua', 'all'),
+                            const SizedBox(width: 8),
+                            _buildFilterChip('Warm', 'warm'),
+                            const SizedBox(width: 8),
+                            _buildFilterChip('Cool', 'cool'),
+                            const SizedBox(width: 8),
+                            _buildFilterChip('Neutral', 'neutral'),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
                       // Area Rekomendasi
                       _isLoading
                           ? const Padding(
                               padding: EdgeInsets.symmetric(vertical: 40),
                               child: Center(child: CircularProgressIndicator(color: Color(0xFFE91E63))),
                             )
-                          : _recommendations.isEmpty
+                          : _filteredRecommendations.isEmpty
                               ? const Padding(
                                   padding: EdgeInsets.symmetric(vertical: 20),
-                                  child: Text('Belum ada rekomendasi produk untuk undertone ini.', style: TextStyle(color: Color(0xFF7A5C61))),
+                                  child: Center(child: Text('Tidak ada produk yang sesuai dengan pencarian/filter.', style: TextStyle(color: Color(0xFF7A5C61)))),
                                 )
                               : ListView.builder(
                                   shrinkWrap: true,
                                   physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: _recommendations.length,
+                                  itemCount: _filteredRecommendations.length,
                                   itemBuilder: (context, index) {
-                                    final prod = _recommendations[index];
+                                    final prod = _filteredRecommendations[index];
                                     final isSaved = prod['is_saved'] ?? false;
+                                    final imageUrl = prod['image_url'];
+
                                     return Container(
                                       margin: const EdgeInsets.only(bottom: 12),
-                                      padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
                                         color: Colors.white.withOpacity(0.5),
                                         borderRadius: BorderRadius.circular(16),
                                         border: Border.all(color: Colors.white, width: 1),
                                       ),
                                       child: ListTile(
-                                        leading: Container(
-                                          width: 50, height: 50,
-                                          decoration: BoxDecoration(color: const Color(0xFFFCE4EC), borderRadius: BorderRadius.circular(12)),
-                                          child: const Icon(Icons.brush, color: Color(0xFFE91E63)),
+                                        // Saat diklik membuka detail produk (Fitur 3)
+                                        onTap: () => _showProductDetail(prod),
+                                        leading: ClipRRect(
+                                          borderRadius: BorderRadius.circular(10),
+                                          child: imageUrl != null && imageUrl.toString().isNotEmpty
+                                              ? Image.network(imageUrl, width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.broken_image))
+                                              : Container(
+                                                  width: 50, height: 50,
+                                                  decoration: BoxDecoration(color: const Color(0xFFFCE4EC), borderRadius: BorderRadius.circular(10)),
+                                                  child: const Icon(Icons.brush, color: Color(0xFFE91E63)),
+                                                ),
                                         ),
                                         title: Text(prod['product_name'] ?? 'Makeup Item', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
-                                        subtitle: Text('${prod['brand']} • Rp ${prod['price'] ?? '0'}', style: const TextStyle(color: Color(0xFF7A5C61), fontSize: 13)),
+                                        subtitle: Text('${prod['brand']} • ${_formatRupiah(prod['price'] ?? 0)}', style: const TextStyle(color: Color(0xFF7A5C61), fontSize: 13)),
                                         trailing: IconButton(
                                           icon: Icon(isSaved ? Icons.favorite : Icons.favorite_border, color: const Color(0xFFE91E63)),
                                           onPressed: () => _toggleSaveProduct(prod['product_id'].toString(), isSaved),
@@ -194,6 +346,23 @@ class _ResultScreenState extends State<ResultScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, String value) {
+    bool isSelected = _selectedFilter == value;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      selectedColor: const Color(0xFFE91E63),
+      backgroundColor: Colors.white.withOpacity(0.4),
+      labelStyle: TextStyle(color: isSelected ? Colors.white : const Color(0xFF4A2333), fontWeight: FontWeight.bold),
+      onSelected: (bool selected) {
+        setState(() {
+          _selectedFilter = value;
+          _filterProducts();
+        });
+      },
     );
   }
 }

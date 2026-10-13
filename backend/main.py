@@ -79,7 +79,6 @@ init_db()
 def determine_undertone(product_name: str, index: int = 0) -> str:
     name_lower = product_name.lower()
     
-    # Kata kunci spesifik
     warm_keywords = ['warm', 'golden', 'honey', 'peach', 'tan', 'amber', 'caramel', 'yellow', 'sand', 'bronze']
     cool_keywords = ['cool', 'pink', 'rose', 'blue', 'fair', 'porcelain', 'ash', 'ruby', 'berry', 'magenta']
     neutral_keywords = ['neutral', 'ivory', 'natural', 'nude', 'buff', 'classic', 'medium', 'universal']
@@ -94,7 +93,6 @@ def determine_undertone(product_name: str, index: int = 0) -> str:
         if kw in name_lower:
             return 'neutral'
             
-    # Jika tidak ada kata kunci warna, distribusikan secara cerdas & seimbang (Rotasi: Warm, Cool, Neutral)
     distribution = ['warm', 'cool', 'neutral']
     return distribution[index % len(distribution)]
 
@@ -109,7 +107,6 @@ async def fetch_products(req: ScrapeRequest):
     products_added = 0
 
     try:
-        # 1. Tarik Data dari Public Makeup API (Global Brands)
         api_url = f"http://makeup-api.herokuapp.com/api/v1/products.json?brand={brand_query}"
         response = requests.get(api_url, timeout=8)
         
@@ -134,7 +131,6 @@ async def fetch_products(req: ScrapeRequest):
                         )
                         products_added += 1
 
-        # 2. Direktori Katalog Lokal Indonesia Lengkap
         extended_local_catalogs = {
             "wardah": [
                 ("Colorfit Velvet Matte Lip Mousse", 73000.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
@@ -195,7 +191,6 @@ async def fetch_products(req: ScrapeRequest):
                     )
                     products_added += 1
 
-        # 3. Dynamic Generator untuk Brand Baru Lainnya
         if products_added == 0 and len(response.json()) == 0:
             dynamic_defaults = [
                 (f"{display_brand} Signature Matte Golden Lipstick", 129000.0, "https://images.unsplash.com/photo-1586495777744-4413f21062fa"),
@@ -222,7 +217,7 @@ async def fetch_products(req: ScrapeRequest):
 
 
 # ==========================================
-# ENDPOINT STANDAR
+# ENDPOINT STANDAR (DIPERBARUI UNTUK FRONTEND)
 # ==========================================
 @app.post("/api/v1/analyze/undertone")
 async def analyze_undertone(image: UploadFile = File(...)):
@@ -251,11 +246,20 @@ def get_recommendations(undertone: str):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT product_id, name AS product_name, price, brand, image_url, target_undertone AS undertone FROM makeup_products WHERE target_undertone = %s OR target_undertone = 'neutral' LIMIT 10", (undertone.lower(),))
+        # Mengembalikan data lengkap termasuk image_url, is_saved status, dan undertone spesifik
+        cursor.execute("""
+            SELECT p.product_id, p.name AS product_name, p.price, p.brand, p.image_url, p.target_undertone AS undertone,
+                   CASE WHEN f.favorite_id IS NOT NULL THEN 1 ELSE 0 END AS is_saved
+            FROM makeup_products p
+            LEFT JOIN favorite_products f ON p.product_id = f.product_id AND f.user_id = 'usr_dummy_01'
+            WHERE p.target_undertone = %s OR p.target_undertone = 'neutral' 
+            LIMIT 20
+        """, (undertone.lower(),))
         products = cursor.fetchall()
         for p in products:
             if p.get('price') is not None:
                 p['price'] = float(p['price'])
+            p['is_saved'] = bool(p['is_saved'])
         cursor.close()
         conn.close()
         return {"success": True, "data": products}
@@ -388,6 +392,19 @@ async def add_favorite(request: Request):
         cursor.close()
         conn.close()
         return {"success": True, "message": "Disimpan ke favorit!"}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@app.delete("/api/v1/favorites/{user_id}/{product_id}")
+def delete_favorite_by_product(user_id: str, product_id: str):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM favorite_products WHERE user_id = %s AND product_id = %s", (user_id, product_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {"success": True, "message": "Dihapus dari favorit"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 

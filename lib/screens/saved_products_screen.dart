@@ -104,6 +104,8 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
                               itemCount: _favorites.length,
                               itemBuilder: (context, index) {
                                 final item = _favorites[index];
+                                final imageUrl = item['image_url'];
+
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 12.0),
                                   child: Container(
@@ -113,15 +115,21 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
                                       border: Border.all(color: Colors.white.withOpacity(0.5)),
                                     ),
                                     child: ListTile(
-                                      leading: CircleAvatar(
-                                        backgroundColor: const Color(0xFFE91E63).withOpacity(0.2),
-                                        child: const Icon(Icons.bookmark, color: Color(0xFFE91E63)),
+                                      leading: ClipRRect(
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: imageUrl != null && imageUrl.toString().isNotEmpty
+                                            ? Image.network(imageUrl, width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.broken_image))
+                                            : Container(
+                                                width: 50, height: 50,
+                                                decoration: BoxDecoration(color: const Color(0xFFFCE4EC), borderRadius: BorderRadius.circular(10)),
+                                                child: const Icon(Icons.bookmark, color: Color(0xFFE91E63)),
+                                              ),
                                       ),
-                                      title: Text(item['product_name'], style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
+                                      title: Text(item['product_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
                                       subtitle: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(item['brand_name'], style: const TextStyle(color: Color(0xFF7A5C61))),
+                                          Text(item['brand_name'] ?? '', style: const TextStyle(color: Color(0xFF7A5C61))),
                                           Text(_formatRupiah(item['price']), style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFFE91E63))),
                                         ],
                                       ),

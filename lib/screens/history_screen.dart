@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../widgets/dynamic_background.dart';
-import 'result_screen.dart'; // Import halaman result
+import 'result_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -16,7 +16,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   List<dynamic> _historyData = [];
   bool _isLoading = true;
   String? _errorMessage;
-  final String baseUrl = 'http://10.4.89.111:8000'; // Sesuaikan IP Anda
+  final String baseUrl = 'http://10.4.89.111:8000';
 
   @override
   void initState() {
@@ -64,8 +64,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   String _formatDate(String isoString) {
-    DateTime date = DateTime.parse(isoString);
-    return "${date.day}-${date.month}-${date.year}";
+    try {
+      DateTime date = DateTime.parse(isoString);
+      return "${date.day}-${date.month}-${date.year}";
+    } catch (_) {
+      return isoString;
+    }
   }
 
   @override
@@ -125,14 +129,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 padding: const EdgeInsets.only(bottom: 16.0),
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(20),
-                                  // Navigasi ke ResultScreen saat riwayat diklik
                                   onTap: () {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
                                         builder: (context) => ResultScreen(
                                           detectedUndertone: rawUndertone.toLowerCase(),
-                                          imagePath: item['image_url'], // Kirim path gambar
+                                          imagePath: item['image_url'],
                                         ),
                                       ),
                                     );
