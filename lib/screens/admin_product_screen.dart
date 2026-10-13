@@ -43,19 +43,12 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
     }
   }
 
-  // MODAL AUTO-SCRAPING DENGAN HTML CUSTOMIZER
+  // MODAL AUTO-SCRAPING (BERSIH DAN SEDERHANA)
   Future<void> _showScrapeDialog() async {
     final TextEditingController urlController = TextEditingController();
     final TextEditingController brandController = TextEditingController();
-    
-    // Konfigurasi CSS selector
-    final TextEditingController containerClassController = TextEditingController(text: 'product-card');
-    final TextEditingController titleClassController = TextEditingController(text: 'product-title');
-    final TextEditingController priceClassController = TextEditingController(text: 'price-text');
-    
     String undertone = 'neutral';
     bool isScraping = false;
-    bool showAdvanced = false;
 
     await showDialog(
       context: context,
@@ -70,11 +63,17 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Tarik data katalog secara otomatis.', style: TextStyle(fontSize: 13)),
+                    const Text('Tarik data katalog otomatis. Konfigurasi website diproses langsung oleh sistem database.', style: TextStyle(fontSize: 13, color: Colors.black87)),
                     const SizedBox(height: 16),
-                    TextField(controller: urlController, decoration: const InputDecoration(labelText: 'URL Target E-Commerce', border: OutlineInputBorder(), isDense: true)),
+                    TextField(
+                      controller: urlController, 
+                      decoration: const InputDecoration(labelText: 'URL Target E-Commerce', border: OutlineInputBorder(), isDense: true)
+                    ),
                     const SizedBox(height: 12),
-                    TextField(controller: brandController, decoration: const InputDecoration(labelText: 'Nama Brand', border: OutlineInputBorder(), isDense: true)),
+                    TextField(
+                      controller: brandController, 
+                      decoration: const InputDecoration(labelText: 'Nama Brand', border: OutlineInputBorder(), isDense: true)
+                    ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       decoration: const InputDecoration(labelText: 'Target Undertone Bawaan', border: OutlineInputBorder(), isDense: true),
@@ -86,23 +85,6 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                       ],
                       onChanged: (val) => undertone = val ?? 'neutral',
                     ),
-                    const SizedBox(height: 8),
-                    TextButton.icon(
-                      icon: Icon(showAdvanced ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 18),
-                      label: const Text('Pengaturan HTML Target (Wajib Disetel)'),
-                      onPressed: () => setStateDialog(() => showAdvanced = !showAdvanced),
-                      style: TextButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                    ),
-                    if (showAdvanced) ...[
-                      const SizedBox(height: 8),
-                      const Text('Gunakan Inspect Element di Web Target untuk menemukan nama class ini:', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                      const SizedBox(height: 8),
-                      TextField(controller: containerClassController, decoration: const InputDecoration(labelText: 'Class Wadah Produk (Card)', border: OutlineInputBorder(), isDense: true)),
-                      const SizedBox(height: 8),
-                      TextField(controller: titleClassController, decoration: const InputDecoration(labelText: 'Class Judul/Nama Produk', border: OutlineInputBorder(), isDense: true)),
-                      const SizedBox(height: 8),
-                      TextField(controller: priceClassController, decoration: const InputDecoration(labelText: 'Class Harga Produk', border: OutlineInputBorder(), isDense: true)),
-                    ],
                     if (isScraping) 
                       const Padding(
                         padding: EdgeInsets.only(top: 24.0),
@@ -132,10 +114,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                         body: jsonEncode({
                           'url': urlController.text.trim(),
                           'brand': brandController.text.trim(),
-                          'target_undertone': undertone,
-                          'container_class': containerClassController.text.trim(),
-                          'title_class': titleClassController.text.trim(),
-                          'price_class': priceClassController.text.trim(),
+                          'target_undertone': undertone
                         }),
                       );
 
@@ -269,7 +248,6 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // PERBAIKAN OVERFLOW: Dibungkus dengan Expanded agar teks menyesuaikan ruang yang ada
                       const Expanded(
                         child: Text(
                           'Manajemen Produk', 

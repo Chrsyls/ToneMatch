@@ -29,19 +29,17 @@ class ProductCreate(BaseModel):
     price: float
     undertone: str
 
-# Model Scraping Dinamis (Diperbarui)
+# Model Scraping (Jauh lebih sederhana, hanya URL, Brand, Undertone)
 class ScrapeRequest(BaseModel):
     url: str
     brand: str
     target_undertone: str = "neutral"
-    container_class: str = "product-card"
-    title_class: str = "product-title"
-    price_class: str = "price-text"
 
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        
         cursor.execute("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(255)")
         
@@ -72,6 +70,32 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # 1. BUAT TABEL KONFIGURASI SCRAPING
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS scraping_configs (
+                config_id INT AUTO_INCREMENT PRIMARY KEY,
+                website_name VARCHAR(100),
+                domain_keyword VARCHAR(100),
+                container_class VARCHAR(100),
+                title_class VARCHAR(100),
+                price_class VARCHAR(100)
+            )
+        """)
+        
+        # 2. ISI DATA BAWAAN JIKA KOSONG
+        cursor.execute("SELECT COUNT(*) FROM scraping_configs")
+        if cursor.fetchone()[0] == 0:
+            default_configs = [
+                ('Sephora ID', 'sephora.co.id', 'product-card', 'product-title', 'price-text'),
+                ('Sociolla', 'sociolla.com', 'product-item', 'product-name', 'product-price'),
+                ('Situs Default', 'default', 'product-card', 'product-title', 'price-text')
+            ]
+            cursor.executemany("""
+                INSERT INTO scraping_configs (website_name, domain_keyword, container_class, title_class, price_class)
+                VALUES (%s, %s, %s, %s, %s)
+            """, default_configs)
+
         conn.commit()
         cursor.close()
         conn.close()
@@ -83,25 +107,48 @@ init_db()
 @app.post("/api/v1/admin/products/scrape")
 async def scrape_products(req: ScrapeRequest):
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Cari konfigurasi class HTML berdasarkan URL yang dikirim
+        cursor.execute("SELECT * FROM scraping_configs")
+        configs = cursor.fetchall()
+        
+        selected_config = None
+        for config in configs:
+            if config['domain_keyword'] != 'default' and config['domain_keyword'] in req.url:
+                selected_config = config
+                break
+                
+        # Gunakan default jika tidak ada domain yang cocok
+        if not selected_config:
+            selected_config = next((c for c in configs if c['domain_keyword'] == 'default'), None)
+
+        if not selected_config:
+            return JSONResponse(status_code=400, content={"success": False, "message": "Konfigurasi web scraping tidak ditemukan di database."})
+
+        # Ambil nama class dari database
+        container_cls = selected_config['container_class']
+        title_cls = selected_config['title_class']
+        price_cls = selected_config['price_class']
+
+        # Mulai proses scraping
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
         }
         response = requests.get(req.url, headers=headers, timeout=15)
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Mencari berdasarkan class dinamis dari frontend
-        items = soup.find_all(class_=req.container_class) 
+        # Mencari data menggunakan class dari database
+        items = soup.find_all(class_=container_cls) 
         
         if not items:
-            return JSONResponse(status_code=400, content={"success": False, "message": f"Tidak ada produk. Pastikan class '{req.container_class}' benar."})
+            return JSONResponse(status_code=400, content={"success": False, "message": f"Tidak ada produk. Pastikan format HTML web {selected_config['website_name']} sesuai dengan setting di database."})
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
         products_added = 0
-
         for item in items:
-            name_elem = item.find(class_=req.title_class) 
-            price_elem = item.find(class_=req.price_class)
+            name_elem = item.find(class_=title_cls) 
+            price_elem = item.find(class_=price_cls)
 
             if name_elem and price_elem:
                 name = name_elem.text.strip()
@@ -115,10 +162,14 @@ async def scrape_products(req: ScrapeRequest):
         conn.commit()
         cursor.close()
         conn.close()
-        return {"success": True, "message": f"Berhasil scraping dan menambahkan {products_added} produk dari {req.brand}."}
+        
+        web_source_name = selected_config['website_name']
+        return {"success": True, "message": f"Berhasil menarik {products_added} produk dari {web_source_name} untuk brand {req.brand}."}
+
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": f"Gagal scraping: {str(e)}"})
 
+# ==================== ENDPOINT LAINNYA TETAP SAMA ====================
 
 @app.post("/api/v1/analyze/undertone")
 async def analyze_undertone(image: UploadFile = File(...)):
