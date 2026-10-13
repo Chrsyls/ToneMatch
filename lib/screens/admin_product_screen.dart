@@ -43,9 +43,8 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
     }
   }
 
-  // MODAL AUTO-SCRAPING
+  // MODAL PENARIKAN KATALOG BERDASARKAN NAMA BRAND (INSTAN & TANPA URL)
   Future<void> _showScrapeDialog() async {
-    final TextEditingController urlController = TextEditingController();
     final TextEditingController brandController = TextEditingController();
     String undertone = 'neutral';
     bool isScraping = false;
@@ -57,26 +56,21 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              title: const Text('Auto-Scrape Produk', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
+              title: const Text('Tarik Data Kosmetik', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Tarik data katalog otomatis beserta gambar produk langsung dari e-commerce.', style: TextStyle(fontSize: 13, color: Colors.black87)),
+                    const Text('Ketik nama brand (contoh: Maybelline, Nyx, Wardah, Somethinc, BLP). Sistem akan menarik produk dan gambar secara instan.', style: TextStyle(fontSize: 13, color: Colors.black87)),
                     const SizedBox(height: 16),
                     TextField(
-                      controller: urlController, 
-                      decoration: const InputDecoration(labelText: 'URL Target E-Commerce', border: OutlineInputBorder(), isDense: true)
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
                       controller: brandController, 
-                      decoration: const InputDecoration(labelText: 'Nama Brand', border: OutlineInputBorder(), isDense: true)
+                      decoration: const InputDecoration(labelText: 'Nama Brand', border: OutlineInputBorder(), isDense: true, hintText: 'Cth: Wardah')
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      decoration: const InputDecoration(labelText: 'Target Undertone Bawaan', border: OutlineInputBorder(), isDense: true),
+                      decoration: const InputDecoration(labelText: 'Target Undertone', border: OutlineInputBorder(), isDense: true),
                       value: undertone,
                       items: const [
                         DropdownMenuItem(value: 'warm', child: Text('Warm')),
@@ -101,8 +95,8 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63)),
                   onPressed: isScraping ? null : () async {
-                    if (urlController.text.isEmpty || brandController.text.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('URL dan Brand tidak boleh kosong!'), backgroundColor: Colors.red));
+                    if (brandController.text.trim().isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nama Brand tidak boleh kosong!'), backgroundColor: Colors.red));
                       return;
                     }
 
@@ -112,7 +106,6 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                         Uri.parse('$baseUrl/api/v1/admin/products/scrape'),
                         headers: {'Content-Type': 'application/json'},
                         body: jsonEncode({
-                          'url': urlController.text.trim(),
                           'brand': brandController.text.trim(),
                           'target_undertone': undertone
                         }),
@@ -124,7 +117,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(data['message']), backgroundColor: Colors.green));
                         _fetchProducts(); 
                       } else {
-                        throw Exception(data['message'] ?? 'Gagal memproses data');
+                        throw Exception(data['error'] ?? data['message'] ?? 'Gagal memproses data');
                       }
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
@@ -134,7 +127,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                       }
                     }
                   },
-                  child: const Text('Scrape Sekarang', style: TextStyle(color: Colors.white)),
+                  child: const Text('Tarik Katalog', style: TextStyle(color: Colors.white)),
                 ),
               ],
             );
@@ -144,7 +137,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
     );
   }
 
-  // MODAL TAMBAH / EDIT PRODUK MANUAL (DENGAN INPUT IMAGE URL)
+  // MODAL TAMBAH / EDIT PRODUK MANUAL
   void _showAddEditModal({Map<String, dynamic>? product}) {
     final nameController = TextEditingController(text: product?['product_name'] ?? '');
     final brandController = TextEditingController(text: product?['brand'] ?? '');
@@ -264,8 +257,8 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.language, color: Colors.blueAccent, size: 28),
-                            tooltip: 'Scrape Web',
+                            icon: const Icon(Icons.download_for_offline, color: Colors.blueAccent, size: 28),
+                            tooltip: 'Tarik Katalog',
                             onPressed: _showScrapeDialog,
                           ),
                           IconButton(
