@@ -10,7 +10,6 @@ from bs4 import BeautifulSoup
 import re
 import json
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
 
 app = FastAPI()
 
@@ -103,9 +102,6 @@ def init_db():
 
 init_db()
 
-# ==========================================
-# ENDPOINT SCRAPING (STEALTH BYPASS MODE)
-# ==========================================
 @app.post("/api/v1/admin/products/scrape")
 async def scrape_products(req: ScrapeRequest):
     conn = get_db_connection()
@@ -136,8 +132,6 @@ async def scrape_products(req: ScrapeRequest):
             )
             
             page = await context.new_page()
-            # Menerapkan mode STEALTH untuk menghindari deteksi Cloudflare
-            await stealth_async(page)
             
             # Buka URL dan tunggu hingga jaringan diam (berhenti memuat JS/Data)
             await page.goto(req.url, timeout=45000, wait_until="networkidle")
@@ -175,32 +169,26 @@ async def scrape_products(req: ScrapeRequest):
                 except:
                     continue
 
-            # --- METODE 2: HEURISTIC PARSING (Mencari elemen dengan kata "Rp") ---
+            # --- METODE 2: HEURISTIC PARSING ---
             if not scraped_data:
-                # Cari semua elemen yang mengandung format harga
                 price_elements = soup.find_all(string=re.compile(r'(Rp|IDR)\s*[\d\.,]+', re.IGNORECASE))
                 for price_str in price_elements:
                     parent = price_str.parent
                     if not parent: continue
                     
-                    # Naik ke wadah kontainer produk (misal: <a> atau <div> card)
                     container = parent.find_parent(['a', 'div', 'li'])
                     if not container: continue
                     
-                    # Cari gambar di dalam kontainer
                     img_tag = container.find('img')
                     image_url = img_tag.get('src') or img_tag.get('data-src') or '' if img_tag else ''
                     
-                    # Bersihkan harga
                     raw_price = re.sub(r'[^\d]', '', price_str)
                     price = float(raw_price) if raw_price else 0.0
                     
-                    # Cari judul terpanjang di kontainer yang bukan harga
                     texts = [t.strip() for t in container.stripped_strings if len(t.strip()) > 5 and 'Rp' not in t]
                     name = texts[0] if texts else ""
                     
                     if name and price > 0:
-                        # Hindari duplikasi dalam list hasil
                         if not any(d[0] == name for d in scraped_data):
                             scraped_data.append((name, price, image_url))
                             
@@ -246,9 +234,8 @@ async def scrape_products(req: ScrapeRequest):
 
 
 # ==========================================
-# ENDPOINT LAINNYA (PRODUK, FAVORIT, USER, DLL)
+# ENDPOINT LAINNYA
 # ==========================================
-
 @app.post("/api/v1/analyze/undertone")
 async def analyze_undertone(image: UploadFile = File(...)):
     try:
