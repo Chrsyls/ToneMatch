@@ -35,13 +35,6 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
           });
           return;
         }
-      } else {
-        final errData = json.decode(res.body);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Gagal Memuat: ${errData['error']}'), backgroundColor: Colors.red),
-          );
-        }
       }
       setState(() => _isLoading = false);
     } catch (e) {
@@ -50,12 +43,19 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
     }
   }
 
-  // MODAL UNTUK AUTO-SCRAPING
+  // MODAL AUTO-SCRAPING DENGAN HTML CUSTOMIZER
   Future<void> _showScrapeDialog() async {
     final TextEditingController urlController = TextEditingController();
     final TextEditingController brandController = TextEditingController();
+    
+    // Konfigurasi CSS selector
+    final TextEditingController containerClassController = TextEditingController(text: 'product-card');
+    final TextEditingController titleClassController = TextEditingController(text: 'product-title');
+    final TextEditingController priceClassController = TextEditingController(text: 'price-text');
+    
     String undertone = 'neutral';
     bool isScraping = false;
+    bool showAdvanced = false;
 
     await showDialog(
       context: context,
@@ -70,20 +70,14 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Masukkan URL e-commerce target untuk menarik data secara otomatis.', style: TextStyle(fontSize: 13)),
+                    const Text('Tarik data katalog secara otomatis.', style: TextStyle(fontSize: 13)),
                     const SizedBox(height: 16),
-                    TextField(
-                      controller: urlController,
-                      decoration: const InputDecoration(labelText: 'URL Target', border: OutlineInputBorder()),
-                    ),
+                    TextField(controller: urlController, decoration: const InputDecoration(labelText: 'URL Target E-Commerce', border: OutlineInputBorder(), isDense: true)),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: brandController,
-                      decoration: const InputDecoration(labelText: 'Nama Brand (Bawaan)', border: OutlineInputBorder()),
-                    ),
+                    TextField(controller: brandController, decoration: const InputDecoration(labelText: 'Nama Brand', border: OutlineInputBorder(), isDense: true)),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      decoration: const InputDecoration(labelText: 'Target Undertone Bawaan', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(labelText: 'Target Undertone Bawaan', border: OutlineInputBorder(), isDense: true),
                       value: undertone,
                       items: const [
                         DropdownMenuItem(value: 'warm', child: Text('Warm')),
@@ -92,6 +86,23 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                       ],
                       onChanged: (val) => undertone = val ?? 'neutral',
                     ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      icon: Icon(showAdvanced ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 18),
+                      label: const Text('Pengaturan HTML Target (Wajib Disetel)'),
+                      onPressed: () => setStateDialog(() => showAdvanced = !showAdvanced),
+                      style: TextButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                    ),
+                    if (showAdvanced) ...[
+                      const SizedBox(height: 8),
+                      const Text('Gunakan Inspect Element di Web Target untuk menemukan nama class ini:', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      const SizedBox(height: 8),
+                      TextField(controller: containerClassController, decoration: const InputDecoration(labelText: 'Class Wadah Produk (Card)', border: OutlineInputBorder(), isDense: true)),
+                      const SizedBox(height: 8),
+                      TextField(controller: titleClassController, decoration: const InputDecoration(labelText: 'Class Judul/Nama Produk', border: OutlineInputBorder(), isDense: true)),
+                      const SizedBox(height: 8),
+                      TextField(controller: priceClassController, decoration: const InputDecoration(labelText: 'Class Harga Produk', border: OutlineInputBorder(), isDense: true)),
+                    ],
                     if (isScraping) 
                       const Padding(
                         padding: EdgeInsets.only(top: 24.0),
@@ -109,9 +120,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63)),
                   onPressed: isScraping ? null : () async {
                     if (urlController.text.isEmpty || brandController.text.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('URL dan Brand tidak boleh kosong!'), backgroundColor: Colors.red),
-                      );
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('URL dan Brand tidak boleh kosong!'), backgroundColor: Colors.red));
                       return;
                     }
 
@@ -123,31 +132,30 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                         body: jsonEncode({
                           'url': urlController.text.trim(),
                           'brand': brandController.text.trim(),
-                          'target_undertone': undertone
+                          'target_undertone': undertone,
+                          'container_class': containerClassController.text.trim(),
+                          'title_class': titleClassController.text.trim(),
+                          'price_class': priceClassController.text.trim(),
                         }),
                       );
 
                       final data = json.decode(response.body);
                       if (response.statusCode == 200 && data['success'] == true) {
                         if (mounted) Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(data['message']), backgroundColor: Colors.green),
-                        );
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(data['message']), backgroundColor: Colors.green));
                         _fetchProducts(); 
                       } else {
-                        throw Exception(data['error'] ?? data['message'] ?? 'Gagal memproses data');
+                        throw Exception(data['message'] ?? 'Gagal memproses data');
                       }
                     } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-                      );
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
                     } finally {
                       if (mounted && isScraping) {
                         setStateDialog(() => isScraping = false);
                       }
                     }
                   },
-                  child: const Text('Mulai Scrape', style: TextStyle(color: Colors.white)),
+                  child: const Text('Scrape Sekarang', style: TextStyle(color: Colors.white)),
                 ),
               ],
             );
@@ -175,19 +183,14 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
             return Padding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
-                left: 24,
-                right: 24,
-                top: 24,
+                left: 24, right: 24, top: 24,
               ),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      product == null ? 'Tambah Produk Baru' : 'Edit Produk',
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2333)),
-                    ),
+                    Text(product == null ? 'Tambah Produk Baru' : 'Edit Produk', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
                     const SizedBox(height: 16),
                     TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nama Produk')),
                     const SizedBox(height: 12),
@@ -207,11 +210,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE91E63), 
-                        minimumSize: const Size(double.infinity, 50),
-                        disabledBackgroundColor: Colors.grey,
-                      ),
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63), minimumSize: const Size(double.infinity, 50)),
                       onPressed: isSaving ? null : () async {
                         setModalState(() => isSaving = true);
                         try {
@@ -221,47 +220,23 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                             "price": double.tryParse(priceController.text) ?? 0,
                             "undertone": undertone,
                           });
-
-                          final url = product == null
-                              ? Uri.parse('$baseUrl/api/v1/admin/products')
-                              : Uri.parse('$baseUrl/api/v1/admin/products/${product['product_id']}');
-
-                          final response = await (product == null
-                              ? http.post(url, headers: {"Content-Type": "application/json"}, body: body)
-                              : http.put(url, headers: {"Content-Type": "application/json"}, body: body));
-
+                          final url = product == null ? Uri.parse('$baseUrl/api/v1/admin/products') : Uri.parse('$baseUrl/api/v1/admin/products/${product['product_id']}');
+                          final response = await (product == null ? http.post(url, headers: {"Content-Type": "application/json"}, body: body) : http.put(url, headers: {"Content-Type": "application/json"}, body: body));
+                          
                           if (response.statusCode == 200) {
-                            final resData = json.decode(response.body);
-                            if (resData['success'] == true) {
-                              if (mounted) Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Produk berhasil disimpan!'), backgroundColor: Colors.green),
-                              );
-                              _fetchProducts(); 
-                              return; 
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Gagal: ${resData['error']}'), backgroundColor: Colors.red),
-                              );
-                            }
+                            if (mounted) Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Produk berhasil disimpan!'), backgroundColor: Colors.green));
+                            _fetchProducts(); 
                           } else {
                             final errData = json.decode(response.body);
-                            final errorMsg = errData['error'] ?? 'Server Error: ${response.statusCode}';
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Server Database Error: $errorMsg'), backgroundColor: Colors.red),
-                            );
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: ${errData['error']}'), backgroundColor: Colors.red));
                           }
                         } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Koneksi Gagal: $e'), backgroundColor: Colors.red),
-                          );
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Koneksi Gagal: $e'), backgroundColor: Colors.red));
                         } 
-                        
                         setModalState(() => isSaving = false);
                       },
-                      child: isSaving 
-                          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text('Simpan Produk', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      child: isSaving ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Simpan Produk', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
                     const SizedBox(height: 24),
                   ],
@@ -294,18 +269,24 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Manajemen Produk', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
-                      // Kumpulan tombol di kanan atas
+                      // PERBAIKAN OVERFLOW: Dibungkus dengan Expanded agar teks menyesuaikan ruang yang ada
+                      const Expanded(
+                        child: Text(
+                          'Manajemen Produk', 
+                          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFF4A2333)),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                       Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.language, color: Colors.blueAccent, size: 32),
+                            icon: const Icon(Icons.language, color: Colors.blueAccent, size: 28),
                             tooltip: 'Scrape Web',
                             onPressed: _showScrapeDialog,
                           ),
-                          const SizedBox(width: 8),
                           IconButton(
-                            icon: const Icon(Icons.add_circle, color: Color(0xFFE91E63), size: 36),
+                            icon: const Icon(Icons.add_circle, color: Color(0xFFE91E63), size: 32),
                             onPressed: () => _showAddEditModal(),
                           ),
                         ],

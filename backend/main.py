@@ -6,8 +6,6 @@ import mysql.connector
 import os
 import time
 from datetime import datetime
-
-# Import tambahan untuk fitur Scraping
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -25,39 +23,37 @@ def get_db_connection():
         database="tonematch_db"
     )
 
-# Model Data Pydantic
 class ProductCreate(BaseModel):
     product_name: str
     brand: str
     price: float
     undertone: str
 
-# Model Data Pydantic untuk Auto-Scraping
+# Model Scraping Dinamis (Diperbarui)
 class ScrapeRequest(BaseModel):
     url: str
     brand: str
     target_undertone: str = "neutral"
+    container_class: str = "product-card"
+    title_class: str = "product-title"
+    price_class: str = "price-text"
 
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
         cursor.execute("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(255)")
         
-        # AUTO-REPAIR SCHEMA
         cursor.execute("SHOW TABLES LIKE 'makeup_products'")
         if cursor.fetchone():
             cursor.execute("SHOW COLUMNS FROM makeup_products LIKE 'brand_id'")
             if cursor.fetchone():
-                print("Mendeteksi skema lama! Memperbaiki struktur tabel secara otomatis...")
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
                 cursor.execute("DROP TABLE IF EXISTS makeup_products")
                 cursor.execute("DROP TABLE IF EXISTS favorite_products")
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
                 
-        # Buat tabel dengan skema terbaru yang stabil
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS makeup_products (
                 product_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -68,7 +64,6 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS favorite_products (
                 favorite_id VARCHAR(128) PRIMARY KEY,
@@ -77,7 +72,6 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
         conn.commit()
         cursor.close()
         conn.close()
@@ -86,38 +80,31 @@ def init_db():
 
 init_db()
 
-# ==========================================
-# ENDPOINT SCRAPING PRODUK (BARU)
-# ==========================================
 @app.post("/api/v1/admin/products/scrape")
 async def scrape_products(req: ScrapeRequest):
     try:
-        # Gunakan header browser agar tidak diblokir web target
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
         }
-        response = requests.get(req.url, headers=headers, timeout=10)
+        response = requests.get(req.url, headers=headers, timeout=15)
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # CATATAN PENTING: Class CSS ('product-card', 'product-title', 'price-text') 
-        # harus disesuaikan dengan hasil Inspect Element di web target aslinya.
-        items = soup.find_all('div', class_='product-card') 
+        # Mencari berdasarkan class dinamis dari frontend
+        items = soup.find_all(class_=req.container_class) 
         
         if not items:
-            return JSONResponse(status_code=400, content={"success": False, "message": "Tidak ada produk yang ditemukan. Cek kembali class HTML pada skrip scraper."})
+            return JSONResponse(status_code=400, content={"success": False, "message": f"Tidak ada produk. Pastikan class '{req.container_class}' benar."})
 
         conn = get_db_connection()
         cursor = conn.cursor()
         products_added = 0
 
         for item in items:
-            name_elem = item.find('h3', class_='product-title') 
-            price_elem = item.find('span', class_='price-text')
+            name_elem = item.find(class_=req.title_class) 
+            price_elem = item.find(class_=req.price_class)
 
             if name_elem and price_elem:
                 name = name_elem.text.strip()
-                
-                # Bersihkan format mata uang (misal: "Rp 150.000" -> 150000.00)
                 raw_price = re.sub(r'[^\d]', '', price_elem.text)
                 price = float(raw_price) if raw_price else 0.0
 
@@ -129,39 +116,26 @@ async def scrape_products(req: ScrapeRequest):
         cursor.close()
         conn.close()
         return {"success": True, "message": f"Berhasil scraping dan menambahkan {products_added} produk dari {req.brand}."}
-
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": f"Gagal scraping: {str(e)}"})
 
-# ==========================================
-# ENDPOINT LAINNYA
-# ==========================================
 
 @app.post("/api/v1/analyze/undertone")
 async def analyze_undertone(image: UploadFile = File(...)):
     try:
         file_name = f"{int(time.time())}_{image.filename}"
         file_path = f"uploads/{file_name}"
-        
         with open(file_path, "wb") as buffer:
             buffer.write(await image.read())
-
         conn = get_db_connection()
         cursor = conn.cursor()
-
         cursor.execute("SELECT uid FROM users WHERE uid = %s", ('usr_dummy_01',))
         if not cursor.fetchone():
-            cursor.execute(
-                "INSERT INTO users (uid, email, name, role) VALUES (%s, %s, %s, %s)", 
-                ('usr_dummy_01', 'test@tonematch.app', 'Alvito Aryo', 'super_admin')
-            )
+            cursor.execute("INSERT INTO users (uid, email, name, role) VALUES (%s, %s, %s, %s)", ('usr_dummy_01', 'test@tonematch.app', 'Alvito Aryo', 'super_admin'))
             conn.commit()
-
         history_id = f"hist_{int(time.time())}"
-        query = "INSERT INTO classification_histories (history_id, user_id, image_url, detected_undertone, confidence_score) VALUES (%s, %s, %s, %s, %s)"
-        cursor.execute(query, (history_id, 'usr_dummy_01', file_path, 'warm', 0.88))
+        cursor.execute("INSERT INTO classification_histories (history_id, user_id, image_url, detected_undertone, confidence_score) VALUES (%s, %s, %s, %s, %s)", (history_id, 'usr_dummy_01', file_path, 'warm', 0.88))
         conn.commit()
-
         cursor.close()
         conn.close()
         return {"success": True, "message": "Berhasil disimpan!", "data": {"undertone": "warm"}}
@@ -173,14 +147,11 @@ def get_recommendations(undertone: str):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        query = "SELECT product_id, name AS product_name, price, brand FROM makeup_products WHERE target_undertone = %s OR target_undertone = 'neutral' LIMIT 10"
-        cursor.execute(query, (undertone.lower(),))
+        cursor.execute("SELECT product_id, name AS product_name, price, brand FROM makeup_products WHERE target_undertone = %s OR target_undertone = 'neutral' LIMIT 10", (undertone.lower(),))
         products = cursor.fetchall()
-        
         for p in products:
             if p.get('price') is not None:
                 p['price'] = float(p['price'])
-                
         cursor.close()
         conn.close()
         return {"success": True, "data": products}
@@ -192,14 +163,11 @@ def get_all_products():
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        query = "SELECT product_id, name AS product_name, brand, price, target_undertone AS undertone FROM makeup_products ORDER BY product_id DESC"
-        cursor.execute(query)
+        cursor.execute("SELECT product_id, name AS product_name, brand, price, target_undertone AS undertone FROM makeup_products ORDER BY product_id DESC")
         products = cursor.fetchall()
-        
         for p in products:
             if p.get('price') is not None:
                 p['price'] = float(p['price'])
-                
         cursor.close()
         conn.close()
         return {"success": True, "data": products}
@@ -211,8 +179,7 @@ async def add_product(data: ProductCreate):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        query = "INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)"
-        cursor.execute(query, (data.product_name, data.brand, data.price, data.undertone))
+        cursor.execute("INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)", (data.product_name, data.brand, data.price, data.undertone))
         conn.commit()
         cursor.close()
         conn.close()
@@ -225,8 +192,7 @@ async def update_product(product_id: int, data: ProductCreate):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        query = "UPDATE makeup_products SET name = %s, brand = %s, price = %s, target_undertone = %s WHERE product_id = %s"
-        cursor.execute(query, (data.product_name, data.brand, data.price, data.undertone, product_id))
+        cursor.execute("UPDATE makeup_products SET name = %s, brand = %s, price = %s, target_undertone = %s WHERE product_id = %s", (data.product_name, data.brand, data.price, data.undertone, product_id))
         conn.commit()
         cursor.close()
         conn.close()
@@ -252,15 +218,11 @@ def get_history(user_id: str):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True) 
-        
-        query = "SELECT history_id, detected_undertone, confidence_score, created_at, image_url FROM classification_histories WHERE user_id = %s ORDER BY created_at DESC"
-        cursor.execute(query, (user_id,))
+        cursor.execute("SELECT history_id, detected_undertone, confidence_score, created_at, image_url FROM classification_histories WHERE user_id = %s ORDER BY created_at DESC", (user_id,))
         histories = cursor.fetchall()
-        
         for item in histories:
             if isinstance(item['created_at'], datetime):
                 item['created_at'] = item['created_at'].isoformat()
-                
         cursor.close()
         conn.close()
         return {"success": True, "data": histories}
@@ -276,7 +238,6 @@ def delete_history(history_id: str):
         row = cursor.fetchone()
         if row and row[0] and os.path.exists(row[0]):
             os.remove(row[0])
-            
         cursor.execute("DELETE FROM classification_histories WHERE history_id = %s", (history_id,))
         conn.commit()
         cursor.close()
@@ -290,19 +251,16 @@ def get_favorites(user_id: str):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        query = """
+        cursor.execute("""
             SELECT f.favorite_id, p.product_id, p.name AS product_name, p.price, p.brand AS brand_name 
             FROM favorite_products f
             JOIN makeup_products p ON f.product_id = p.product_id
             WHERE f.user_id = %s
-        """
-        cursor.execute(query, (user_id,))
+        """, (user_id,))
         favorites = cursor.fetchall()
-        
         for f in favorites:
             if f.get('price') is not None:
                 f['price'] = float(f['price'])
-                
         cursor.close()
         conn.close()
         return {"success": True, "data": favorites}
@@ -313,17 +271,10 @@ def get_favorites(user_id: str):
 async def add_favorite(request: Request):
     try:
         data = await request.json()
-        user_id = data.get("user_id")
-        product_id = data.get("product_id")
-        
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        favorite_id = f"fav_{int(time.time())}"
-        query = "INSERT INTO favorite_products (favorite_id, user_id, product_id) VALUES (%s, %s, %s)"
-        cursor.execute(query, (favorite_id, user_id, product_id))
+        cursor.execute("INSERT INTO favorite_products (favorite_id, user_id, product_id) VALUES (%s, %s, %s)", (f"fav_{int(time.time())}", data.get("user_id"), data.get("product_id")))
         conn.commit()
-        
         cursor.close()
         conn.close()
         return {"success": True, "message": "Disimpan ke favorit!"}
@@ -350,17 +301,11 @@ def get_user_profile(user_id: str):
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT uid, email, name, role, avatar_url FROM users WHERE uid = %s", (user_id,))
         user = cursor.fetchone()
-        
         if not user:
-            default_role = 'super_admin' if user_id == 'usr_dummy_01' else 'user'
-            cursor.execute(
-                "INSERT INTO users (uid, email, name, role) VALUES (%s, %s, %s, %s)", 
-                (user_id, 'test@tonematch.app', 'Alvito Aryo', default_role)
-            )
+            cursor.execute("INSERT INTO users (uid, email, name, role) VALUES (%s, %s, %s, %s)", (user_id, 'test@tonematch.app', 'Alvito Aryo', 'super_admin' if user_id == 'usr_dummy_01' else 'user'))
             conn.commit()
             cursor.execute("SELECT uid, email, name, role, avatar_url FROM users WHERE uid = %s", (user_id,))
             user = cursor.fetchone()
-            
         cursor.close()
         conn.close()
         return {"success": True, "data": user}
@@ -369,19 +314,14 @@ def get_user_profile(user_id: str):
 
 @app.put("/api/v1/users/{user_id}")
 async def update_user_profile(
-    user_id: str, 
-    name: str = Form(None), 
-    email: str = Form(None), 
-    role: str = Form(None),
-    remove_avatar: str = Form("false"),
-    avatar: UploadFile | None = File(None)
+    user_id: str, name: str = Form(None), email: str = Form(None), role: str = Form(None),
+    remove_avatar: str = Form("false"), avatar: UploadFile | None = File(None)
 ):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM users WHERE uid = %s", (user_id,))
         user = cursor.fetchone()
-        
         avatar_path = user.get('avatar_url') if user else None
         
         if remove_avatar == "true":
@@ -397,17 +337,10 @@ async def update_user_profile(
         new_role = role if role is not None and role.strip() != "" else ("super_admin" if not user else user.get('role', 'user'))
         
         if not user:
-            cursor.execute(
-                "INSERT INTO users (uid, email, name, role, avatar_url) VALUES (%s, %s, %s, %s, %s)",
-                (user_id, new_email, new_name, new_role, avatar_path)
-            )
+            cursor.execute("INSERT INTO users (uid, email, name, role, avatar_url) VALUES (%s, %s, %s, %s, %s)", (user_id, new_email, new_name, new_role, avatar_path))
         else:
-            cursor.execute(
-                "UPDATE users SET name = %s, email = %s, role = %s, avatar_url = %s WHERE uid = %s", 
-                (new_name, new_email, new_role, avatar_path, user_id)
-            )
+            cursor.execute("UPDATE users SET name = %s, email = %s, role = %s, avatar_url = %s WHERE uid = %s", (new_name, new_email, new_role, avatar_path, user_id))
         conn.commit()
-        
         cursor.close()
         conn.close()
         return {"success": True, "message": "Profil diperbarui!", "avatar_url": avatar_path, "role": new_role}
@@ -427,14 +360,7 @@ def get_admin_stats():
         products_count = cursor.fetchone()['total_products']
         cursor.close()
         conn.close()
-        return {
-            "success": True, 
-            "data": {
-                "total_users": users_count,
-                "total_history": history_count,
-                "total_products": products_count
-            }
-        }
+        return {"success": True, "data": {"total_users": users_count, "total_history": history_count, "total_products": products_count}}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
@@ -461,7 +387,6 @@ async def update_user_role(target_uid: str, request: Request):
         new_role = data.get("role")
         if new_role not in ['super_admin', 'admin', 'user']:
             return JSONResponse(status_code=400, content={"success": False, "error": "Role tidak valid"})
-            
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE users SET role = %s WHERE uid = %s", (new_role, target_uid))
