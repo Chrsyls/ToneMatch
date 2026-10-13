@@ -29,6 +29,7 @@ class ProductCreate(BaseModel):
     brand: str
     price: float
     undertone: str
+    image_url: str | None = None
 
 class ScrapeRequest(BaseModel):
     url: str
@@ -124,12 +125,24 @@ async def scrape_products(req: ScrapeRequest):
                     for item in items:
                         if item.get('@type') in ['Product', 'ProductGroup']:
                             name = item.get('name')
+                            image = item.get('image')
+                            if isinstance(image, list) and len(image) > 0:
+                                image_url = image[0]
+                            elif isinstance(image, str):
+                                image_url = image
+                            else:
+                                image_url = "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e" # Gambar placeholder kosmetik
+
                             offers = item.get('offers', {})
                             price = float(offers.get('price', 0)) if isinstance(offers, dict) else 0.0
+
                             if name:
                                 cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (name,))
                                 if not cursor.fetchone():
-                                    cursor.execute("INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)", (name, req.brand, price, req.target_undertone))
+                                    cursor.execute(
+                                        "INSERT INTO makeup_products (name, brand, price, target_undertone, image_url) VALUES (%s, %s, %s, %s, %s)", 
+                                        (name, req.brand, price, req.target_undertone, image_url)
+                                    )
                                     products_added += 1
                 except:
                     continue

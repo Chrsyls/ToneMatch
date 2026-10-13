@@ -43,7 +43,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
     }
   }
 
-  // MODAL AUTO-SCRAPING (BERSIH DAN SEDERHANA)
+  // MODAL AUTO-SCRAPING
   Future<void> _showScrapeDialog() async {
     final TextEditingController urlController = TextEditingController();
     final TextEditingController brandController = TextEditingController();
@@ -63,7 +63,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Tarik data katalog otomatis. Konfigurasi website diproses langsung oleh sistem database.', style: TextStyle(fontSize: 13, color: Colors.black87)),
+                    const Text('Tarik data katalog otomatis beserta gambar produk langsung dari e-commerce.', style: TextStyle(fontSize: 13, color: Colors.black87)),
                     const SizedBox(height: 16),
                     TextField(
                       controller: urlController, 
@@ -144,10 +144,12 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
     );
   }
 
+  // MODAL TAMBAH / EDIT PRODUK MANUAL (DENGAN INPUT IMAGE URL)
   void _showAddEditModal({Map<String, dynamic>? product}) {
     final nameController = TextEditingController(text: product?['product_name'] ?? '');
     final brandController = TextEditingController(text: product?['brand'] ?? '');
     final priceController = TextEditingController(text: product?['price']?.toString() ?? '');
+    final imageController = TextEditingController(text: product?['image_url'] ?? '');
     String undertone = product?['undertone'] ?? 'warm';
     bool isSaving = false;
 
@@ -171,11 +173,13 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                   children: [
                     Text(product == null ? 'Tambah Produk Baru' : 'Edit Produk', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
                     const SizedBox(height: 16),
-                    TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nama Produk')),
+                    TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nama Produk', border: OutlineInputBorder(), isDense: true)),
                     const SizedBox(height: 12),
-                    TextField(controller: brandController, decoration: const InputDecoration(labelText: 'Brand')),
+                    TextField(controller: brandController, decoration: const InputDecoration(labelText: 'Brand', border: OutlineInputBorder(), isDense: true)),
                     const SizedBox(height: 12),
-                    TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Harga (Rp)')),
+                    TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Harga (Rp)', border: OutlineInputBorder(), isDense: true)),
+                    const SizedBox(height: 12),
+                    TextField(controller: imageController, decoration: const InputDecoration(labelText: 'URL Gambar Produk (Opsional)', border: OutlineInputBorder(), isDense: true)),
                     const SizedBox(height: 16),
                     const Text('Target Undertone:', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7A5C61))),
                     DropdownButtonFormField<String>(
@@ -198,6 +202,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                             "brand": brandController.text.trim(),
                             "price": double.tryParse(priceController.text) ?? 0,
                             "undertone": undertone,
+                            "image_url": imageController.text.trim(),
                           });
                           final url = product == null ? Uri.parse('$baseUrl/api/v1/admin/products') : Uri.parse('$baseUrl/api/v1/admin/products/${product['product_id']}');
                           final response = await (product == null ? http.post(url, headers: {"Content-Type": "application/json"}, body: body) : http.put(url, headers: {"Content-Type": "application/json"}, body: body));
@@ -286,8 +291,26 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                                   margin: const EdgeInsets.only(bottom: 12),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                   child: ListTile(
+                                    leading: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: p['image_url'] != null && p['image_url'].toString().isNotEmpty
+                                          ? Image.network(
+                                              p['image_url'],
+                                              width: 50,
+                                              height: 50,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                                            )
+                                          : Container(
+                                              width: 50,
+                                              height: 50,
+                                              color: Colors.pink.shade50,
+                                              child: const Icon(Icons.face_retouching_natural, color: Color(0xFFE91E63)),
+                                            ),
+                                    ),
                                     title: Text(p['product_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                    subtitle: Text('${p['brand'] ?? '-'} • Rp ${p['price'] ?? 0} • ${p['undertone'] ?? '-'}'),
+                                    subtitle: Text('${p['brand'] ?? '-'} • Rp ${p['price'] ?? 0}\nUndertone: ${p['undertone'] ?? '-'}'),
+                                    isThreeLine: true,
                                     trailing: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
