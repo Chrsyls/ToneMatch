@@ -8,7 +8,8 @@ import time
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
-import cloudscraper # Library baru penembus Anti-Bot
+import json
+import cloudscraper
 
 app = FastAPI()
 
@@ -110,86 +111,69 @@ async def scrape_products(req: ScrapeRequest):
         cursor.execute("SELECT * FROM scraping_configs")
         configs = cursor.fetchall()
         
-        selected_config = None
-        for config in configs:
-            if config['domain_keyword'] != 'default' and config['domain_keyword'] in req.url:
-                selected_config = config
-                break
-                
+        selected_config = next((c for c in configs if c['domain_keyword'] != 'default' and c['domain_keyword'] in req.url), None)
         if not selected_config:
             selected_config = next((c for c in configs if c['domain_keyword'] == 'default'), None)
 
-        container_cls = selected_config['container_class']
-        title_cls = selected_config['title_class']
-        price_cls = selected_config['price_class']
-
-        # Menggunakan CloudScraper untuk menembus proteksi Anti-Bot
         scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
         response = scraper.get(req.url, timeout=20)
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        items = soup.find_all(class_=container_cls) 
         products_added = 0
 
-        if items:
-            # Metode 1: Scraping Standar Berdasarkan Class
-            for item in items:
-                name_elem = item.find(class_=title_cls) 
-                price_elem = item.find(class_=price_cls)
+        # METODE 1: JSON-LD (SEO Metadata) -> Sangat ampuh untuk Sephora & Sociolla
+        ld_jsons = soup.find_all('script', type='application/ld+json')
+        for script in ld_jsons:
+            try:
+                data = json.loads(script.string)
+                items = data if isinstance(data, list) else [data]
+                for item in items:
+                    if item.get('@type') in ['Product', 'ProductGroup']:
+                        name = item.get('name')
+                        offers = item.get('offers', {})
+                        price = 0
+                        if isinstance(offers, dict):
+                            price = float(offers.get('price', 0))
+                        elif isinstance(offers, list) and len(offers) > 0:
+                            price = float(offers[0].get('price', 0))
+                        
+                        if name:
+                            cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (name,))
+                            if not cursor.fetchone():
+                                cursor.execute("INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)", (name, req.brand, price, req.target_undertone))
+                                products_added += 1
+            except:
+                continue
 
+        # METODE 2: CSS Class Fallback
+        if products_added == 0 and selected_config:
+            items = soup.find_all(class_=selected_config['container_class']) 
+            for item in items:
+                name_elem = item.find(class_=selected_config['title_class']) 
+                price_elem = item.find(class_=selected_config['price_class'])
                 if name_elem and price_elem:
                     name = name_elem.text.strip()
                     raw_price = re.sub(r'[^\d]', '', price_elem.text)
                     price = float(raw_price) if raw_price else 0.0
-
-                    # Cek duplikat
                     cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (name,))
                     if not cursor.fetchone():
-                        sql = "INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)"
-                        cursor.execute(sql, (name, req.brand, price, req.target_undertone))
+                        cursor.execute("INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)", (name, req.brand, price, req.target_undertone))
                         products_added += 1
-        else:
-            # Metode 2: SMART HEURISTIC FALLBACK (Auto-Detect tanpa class HTML)
-            # Berguna untuk web dengan JavaScript kuat (Sephora, Sociolla)
-            brand_elements = soup.find_all(string=re.compile(req.brand, re.IGNORECASE))
-            
-            for el in brand_elements:
-                parent = el.parent
-                if parent:
-                    # Naik 3 level ke atas wadah pembungkus
-                    container = parent.parent.parent if parent.parent else parent
-                    if container:
-                        text_content = container.get_text(separator=' ')
-                        # Cari pola harga Rp / IDR di sekitar nama brand
-                        price_match = re.search(r'(?:Rp|IDR|Rp\.)\s*([\d\.,]+)', text_content, re.IGNORECASE)
-                        
-                        if price_match:
-                            name = el.strip()
-                            if len(name) > 3 and len(name) < 150:
-                                raw_price = re.sub(r'[^\d]', '', price_match.group(1))
-                                price = float(raw_price) if raw_price else 0.0
-                                
-                                # Cek duplikat
-                                cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (name,))
-                                if not cursor.fetchone():
-                                    sql = "INSERT INTO makeup_products (name, brand, price, target_undertone) VALUES (%s, %s, %s, %s)"
-                                    cursor.execute(sql, (name, req.brand, price, req.target_undertone))
-                                    products_added += 1
-                                    
-            if products_added == 0:
-                return JSONResponse(status_code=400, content={"success": False, "message": "Gagal mengekstrak data. Halaman menggunakan rendering JavaScript ketat atau diblokir Captcha sepenuhnya."})
+
+        if products_added == 0:
+            return JSONResponse(status_code=400, content={"success": False, "message": "Gagal: Sephora memblokir bot (Cloudflare) atau merender katalog murni via API internal. Coba URL E-Commerce lain."})
 
         conn.commit()
         cursor.close()
         conn.close()
-        
-        web_source_name = selected_config['website_name']
-        return {"success": True, "message": f"Berhasil menarik {products_added} produk dari {web_source_name} untuk brand {req.brand}."}
+        return {"success": True, "message": f"Berhasil menarik {products_added} produk baru untuk brand {req.brand}."}
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": f"Gagal scraping: {str(e)}"})
 
-
+# ==========================================
+# ENDPOINT STANDAR
+# ==========================================
 @app.post("/api/v1/analyze/undertone")
 async def analyze_undertone(image: UploadFile = File(...)):
     try:
