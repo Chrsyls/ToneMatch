@@ -1,8 +1,10 @@
 import 'dart:ui';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../widgets/dynamic_background.dart';
 
 class ResultScreen extends StatefulWidget {
@@ -50,7 +52,6 @@ class _ResultScreenState extends State<ResultScreen> {
         final data = json.decode(response.body);
         if (data['success'] == true) {
           setState(() {
-            // Memastikan data yang masuk murni sesuai undertone terdeteksi
             final targetTone = widget.detectedUndertone.toLowerCase();
             _recommendations = (data['data'] ?? []).where((prod) {
               final prodTone = (prod['undertone'] ?? '').toString().toLowerCase();
@@ -86,13 +87,17 @@ class _ResultScreenState extends State<ResultScreen> {
       final response = await endpoint;
 
       if (response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(isCurrentlySaved ? 'Produk dihapus dari tersimpan' : 'Produk berhasil disimpan! ❤️')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(isCurrentlySaved ? 'Produk dihapus dari tersimpan' : 'Produk berhasil disimpan! ❤️')),
+          );
+        }
         _fetchRecommendations(); 
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal mengubah status simpan')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal mengubah status simpan')));
+      }
     }
   }
 
@@ -114,6 +119,200 @@ class _ResultScreenState extends State<ResultScreen> {
     return currencyFormatter.format(parsedPrice);
   }
 
+  // FITUR 2: FUNGSI BUKA LINK MARKETPLACE (SHOPEE / TOKOPEDIA)
+  Future<void> _launchMarketplace(String platform, String productName, String brand) async {
+    final query = Uri.encodeComponent('$brand $productName');
+    String url = '';
+    if (platform == 'shopee') {
+      url = 'https://shopee.co.id/search?keyword=$query';
+    } else if (platform == 'tokopedia') {
+      url = 'https://www.tokopedia.com/search?st=product&q=$query';
+    }
+
+    final uri = Uri.parse(url);
+    try {
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw Exception('Could not launch $url');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Tidak dapat membuka $platform: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // FITUR 5: KARTU SHARE HASIL ANALISIS KE MEDIA SOSIAL
+  void _showShareCardDialog() {
+    final undertoneTitle = widget.detectedUndertone.toUpperCase();
+    final userPhotoUrl = widget.imagePath != null ? '$baseUrl/${widget.imagePath}' : null;
+    final topProducts = _recommendations.take(2).map((e) => "• ${e['brand']} - ${e['product_name']}").join("\n");
+
+    final shareText = "✨ *Hasil Analisis ToneMatch* ✨\n\n"
+        "Undertone Kulitku: *$undertoneTitle*\n"
+        "Karakter: Cocok dengan rona makeup yang hangat/seirama.\n\n"
+        "💄 *Rekomendasi Produk Terbaik:*\n"
+        "${topProducts.isNotEmpty ? topProducts : '- Belum ada produk'}\n\n"
+        "Yuk cek undertone wajahmu di aplikasi *ToneMatch*!";
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Desain Kartu Estetik untuk Screenshot / Share
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFFF0F5), Color(0xFFFCE4EC), Color(0xFFF8BBD0)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: Colors.white, width: 3),
+                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 15, offset: Offset(0, 8))],
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.auto_awesome, color: Color(0xFFE91E63), size: 20),
+                        SizedBox(width: 6),
+                        Text('TONEMATCH BEAUTY CARD', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 12, color: Color(0xFF4A2333))),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    if (userPhotoUrl != null)
+                      Container(
+                        width: 90, height: 90,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFFE91E63), width: 3),
+                          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
+                        ),
+                        child: ClipOval(
+                          child: Image.network(
+                            userPhotoUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (c, e, s) => const Icon(Icons.person, size: 45, color: Color(0xFFE91E63)),
+                          ),
+                        ),
+                      )
+                    else
+                      const CircleAvatar(
+                        radius: 40,
+                        backgroundColor: Color(0xFFE91E63),
+                        child: Icon(Icons.face_retouching_natural, size: 45, color: Colors.white),
+                      ),
+                    const SizedBox(height: 14),
+                    const Text('My Skin Undertone is', style: TextStyle(color: Color(0xFF7A5C61), fontSize: 13)),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE91E63),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(undertoneTitle, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1.2)),
+                    ),
+                    const SizedBox(height: 18),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Top Makeup Matches:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF4A2333))),
+                          const SizedBox(height: 6),
+                          if (_recommendations.isEmpty)
+                            const Text('Belum ada produk spesifik', style: TextStyle(fontSize: 12, color: Colors.grey))
+                          else
+                            ..._recommendations.take(2).map((p) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4.0),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.check_circle, size: 14, color: Color(0xFFE91E63)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      '${p['brand']} - ${p['product_name']}',
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF4A2333)),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('📸 Screenshot kartu ini untuk IG Story!', style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Color(0xFF7A5C61))),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Tombol Aksi Share
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF4A2333),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: shareText));
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Teks hasil analisis berhasil disalin! Siap ditempel ke medsos 📋'), backgroundColor: Colors.green),
+                        );
+                      },
+                      icon: const Icon(Icons.copy, size: 18),
+                      label: const Text('Salin Teks', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF25D366), // Warna WhatsApp
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () async {
+                        final waUrl = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(shareText)}');
+                        await launchUrl(waUrl, mode: LaunchMode.externalApplication);
+                      },
+                      icon: const Icon(Icons.share, size: 18),
+                      label: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // MODAL DETAIL PRODUK + TOMBOL MARKETPLACE (FITUR 2)
   void _showProductDetail(Map<String, dynamic> prod) {
     final imageUrl = prod['image_url'];
     final productName = prod['product_name'] ?? 'Makeup Item';
@@ -171,9 +370,48 @@ class _ResultScreenState extends State<ResultScreen> {
                 'Produk ini dirancang khusus untuk menyatu sempurna dengan rona kulit berkarakter $undertone. Memberikan hasil akhir yang natural, tahan lama, dan merata.',
                 style: const TextStyle(color: Color(0xFF7A5C61), height: 1.4),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
+              const Text('Beli Produk di Marketplace:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF4A2333))),
+              const SizedBox(height: 10),
+              // Tombol Deep Link Shopee & Tokopedia
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFEE4D2D), // Warna Shopee
+                        side: const BorderSide(color: Color(0xFFEE4D2D), width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => _launchMarketplace('shopee', productName, brand),
+                      icon: const Icon(Icons.shopping_bag_outlined, size: 18),
+                      label: const Text('Shopee', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF03AC0E), // Warna Tokopedia
+                        side: const BorderSide(color: Color(0xFF03AC0E), width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => _launchMarketplace('tokopedia', productName, brand),
+                      icon: const Icon(Icons.storefront_outlined, size: 18),
+                      label: const Text('Tokopedia', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63), minimumSize: const Size(double.infinity, 50)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE91E63),
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
                 onPressed: () {
                   Navigator.pop(context);
                   _toggleSaveProduct(prod['product_id'].toString(), prod['is_saved'] ?? false);
@@ -204,12 +442,29 @@ class _ResultScreenState extends State<ResultScreen> {
                 Padding(
                   padding: const EdgeInsets.all(20.0),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF4A2333)),
-                        onPressed: () => Navigator.pop(context),
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF4A2333)),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                          const Text('Hasil Analisis', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
+                        ],
                       ),
-                      const Text('Hasil Analisis', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
+                      // Tombol Share Hasil Analisis (Fitur 5)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.share_rounded, color: Color(0xFFE91E63)),
+                          tooltip: 'Bagikan Hasil Analisis',
+                          onPressed: _showShareCardDialog,
+                        ),
+                      ),
                     ],
                   ),
                 ),
