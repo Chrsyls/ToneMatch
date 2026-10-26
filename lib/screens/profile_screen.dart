@@ -68,81 +68,6 @@ class ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // TOMBOL MENU DEBUG GANTI ROLE INSTAN
-  void _showDebugRoleModal() {
-    final currentRole = _userData?['role'] ?? 'user';
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: const [
-                  Icon(Icons.bug_report_rounded, color: Color(0xFFE91E63), size: 28),
-                  SizedBox(width: 10),
-                  Text('Debug Menu: Ganti Role Instan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
-                ],
-              ),
-              const SizedBox(height: 6),
-              const Text('Gunakan menu ini untuk menguji tampilan hak akses User, Admin, dan Super Admin secara langsung.', style: TextStyle(fontSize: 12, color: Color(0xFF7A5C61))),
-              const SizedBox(height: 16),
-              _buildDebugRoleItem('user', 'USER BIASA', currentRole),
-              _buildDebugRoleItem('admin', 'ADMIN PRODUK', currentRole),
-              _buildDebugRoleItem('super_admin', 'SUPER ADMIN', currentRole),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildDebugRoleItem(String roleKey, String label, String activeRole) {
-    final bool isSelected = activeRole == roleKey;
-    return ListTile(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      tileColor: isSelected ? const Color(0xFFFCE4EC) : null,
-      leading: Icon(
-        roleKey == 'super_admin' ? Icons.security : (roleKey == 'admin' ? Icons.admin_panel_settings : Icons.person),
-        color: const Color(0xFFE91E63),
-      ),
-      title: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
-      trailing: isSelected ? const Icon(Icons.check_circle, color: Color(0xFFE91E63)) : const Icon(Icons.swap_horiz, color: Colors.grey),
-      onTap: () async {
-        Navigator.pop(context);
-        try {
-          final response = await http.put(
-            Uri.parse('$baseUrl/api/v1/admin/users/$_currentUid/role'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'role': roleKey}),
-          );
-          if (response.statusCode == 200) {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setString('user_role', roleKey);
-            setState(() {
-              if (_userData != null) _userData!['role'] = roleKey;
-            });
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Role berhasil diganti menjadi ${roleKey.toUpperCase()}!'), backgroundColor: Colors.green),
-              );
-            }
-          }
-        } catch (e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal mengubah role: $e'), backgroundColor: Colors.red));
-          }
-        }
-      },
-    );
-  }
-
   Future<void> _handleLogout() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -196,12 +121,6 @@ class ProfileScreenState extends State<ProfileScreen> {
     final role = _userData?['role'] ?? 'user';
 
     return Scaffold(
-      floatingActionButton: FloatingActionButton.small(
-        backgroundColor: const Color(0xFF4A2333),
-        tooltip: 'Debug Ganti Role',
-        onPressed: _showDebugRoleModal,
-        child: const Icon(Icons.bug_report, color: Colors.white),
-      ),
       body: Stack(
         children: [
           const DynamicBackground(),
@@ -209,22 +128,11 @@ class ProfileScreenState extends State<ProfileScreen> {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Profil Saya', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
-                    TextButton.icon(
-                      style: TextButton.styleFrom(
-                        backgroundColor: Colors.white.withOpacity(0.5),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: _showDebugRoleModal,
-                      icon: const Icon(Icons.bug_report_outlined, size: 18, color: Color(0xFFE91E63)),
-                      label: const Text('Ganti Role', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
-                    ),
-                  ],
+                const Text(
+                  'Profil Saya',
+                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF4A2333)),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
                 ClipRRect(
                   borderRadius: BorderRadius.circular(24),
@@ -268,15 +176,15 @@ class ProfileScreenState extends State<ProfileScreen> {
                                 const SizedBox(height: 4),
                                 Text(email, style: const TextStyle(fontSize: 13, color: Color(0xFF7A5C61))),
                                 const SizedBox(height: 8),
-                                InkWell(
-                                  onTap: _showDebugRoleModal,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFE91E63).withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text('Role: ${role.toUpperCase()} ⚙️', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFE91E63))),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE91E63).withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    'Role: ${role.toUpperCase()}',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFE91E63)),
                                   ),
                                 ),
                               ],
@@ -366,7 +274,7 @@ class ProfileScreenState extends State<ProfileScreen> {
                   ),
                   child: const Text('Keluar Akun', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
-                const SizedBox(height: 60),
+                const SizedBox(height: 40),
               ],
             ),
           ),
