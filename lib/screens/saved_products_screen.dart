@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/dynamic_background.dart';
 
@@ -17,16 +18,22 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
   List<dynamic> _favorites = [];
   bool _isLoading = true;
   String? _errorMessage;
+  String _currentUid = 'usr_dummy_01';
   final String baseUrl = 'http://10.4.89.111:8000';
 
-  // State untuk Fitur 4: Mode Komparasi Produk
   bool _isCompareMode = false;
   final List<Map<String, dynamic>> _selectedForCompare = [];
 
   @override
   void initState() {
     super.initState();
-    _fetchFavorites();
+    _initAndFetchFavorites();
+  }
+
+  Future<void> _initAndFetchFavorites() async {
+    final prefs = await SharedPreferences.getInstance();
+    _currentUid = prefs.getString('user_uid') ?? 'usr_dummy_01';
+    await _fetchFavorites();
   }
 
   Future<void> _fetchFavorites() async {
@@ -35,7 +42,7 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
       _errorMessage = null;
     });
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/v1/favorites/usr_dummy_01')).timeout(const Duration(seconds: 5));
+      final response = await http.get(Uri.parse('$baseUrl/api/v1/favorites/$_currentUid')).timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
         if (decoded['success'] == true) {
@@ -74,7 +81,6 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
     return currencyFormatter.format(parsedPrice);
   }
 
-  // Fungsi Pilih Produk untuk Komparasi
   void _toggleSelectForCompare(Map<String, dynamic> item) {
     setState(() {
       final exists = _selectedForCompare.any((e) => e['favorite_id'] == item['favorite_id']);
@@ -98,7 +104,6 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  // FITUR 4: MODAL POP-UP KOMPARASI 2 PRODUK SIDE-BY-SIDE
   void _showComparisonModal() {
     if (_selectedForCompare.length < 2) return;
 
@@ -119,26 +124,15 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 40, height: 4,
-                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
-              ),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
-              const Text(
-                'Komparasi Kosmetik',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF4A2333)),
-              ),
+              const Text('Komparasi Kosmetik', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
               const SizedBox(height: 20),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(child: _buildCompareColumn(prod1, isCheaper: price1 < price2)),
-                  Container(
-                    width: 1,
-                    height: 280,
-                    color: Colors.grey.shade300,
-                    margin: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
+                  Container(width: 1, height: 280, color: Colors.grey.shade300, margin: const EdgeInsets.symmetric(horizontal: 12)),
                   Expanded(child: _buildCompareColumn(prod2, isCheaper: price2 < price1)),
                 ],
               ),
@@ -173,65 +167,32 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
               borderRadius: BorderRadius.circular(14),
               child: imageUrl != null && imageUrl.toString().isNotEmpty
                   ? Image.network(imageUrl, width: 90, height: 90, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.broken_image, size: 60))
-                  : Container(
-                      width: 90, height: 90,
-                      color: const Color(0xFFFCE4EC),
-                      child: const Icon(Icons.brush, color: Color(0xFFE91E63), size: 40),
-                    ),
+                  : Container(width: 90, height: 90, color: const Color(0xFFFCE4EC), child: const Icon(Icons.brush, color: Color(0xFFE91E63), size: 40)),
             ),
             if (isCheaper)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade600,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                decoration: BoxDecoration(color: Colors.green.shade600, borderRadius: BorderRadius.circular(8)),
                 child: const Text('🔥 Hemat', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
               ),
           ],
         ),
         const SizedBox(height: 12),
-        Text(
-          brand.toString().toUpperCase(),
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFE91E63)),
-          textAlign: TextAlign.center,
-        ),
+        Text(brand.toString().toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFE91E63)), textAlign: TextAlign.center),
         const SizedBox(height: 4),
         SizedBox(
           height: 40,
-          child: Text(
-            productName,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF4A2333)),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
+          child: Text(productName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF4A2333)), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
         ),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-          decoration: BoxDecoration(
-            color: isCheaper ? Colors.green.shade50 : const Color(0xFFFCE4EC),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            _formatRupiah(item['price']),
-            style: TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 13,
-              color: isCheaper ? Colors.green.shade800 : const Color(0xFFE91E63),
-            ),
-          ),
+          decoration: BoxDecoration(color: isCheaper ? Colors.green.shade50 : const Color(0xFFFCE4EC), borderRadius: BorderRadius.circular(8)),
+          child: Text(_formatRupiah(item['price']), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: isCheaper ? Colors.green.shade800 : const Color(0xFFE91E63))),
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFFEE4D2D),
-            side: const BorderSide(color: Color(0xFFEE4D2D)),
-            minimumSize: const Size(double.infinity, 36),
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
+          style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFEE4D2D), side: const BorderSide(color: Color(0xFFEE4D2D)), minimumSize: const Size(double.infinity, 36)),
           onPressed: () => _launchShopee(productName, brand),
           icon: const Icon(Icons.shopping_bag_outlined, size: 15),
           label: const Text('Cek Shopee', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
@@ -258,14 +219,8 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
                   _selectedForCompare.clear();
                 });
               },
-              icon: Icon(
-                _isCompareMode ? Icons.close : Icons.compare_arrows_rounded,
-                color: const Color(0xFFE91E63),
-              ),
-              label: Text(
-                _isCompareMode ? 'Batal' : 'Bandingkan',
-                style: const TextStyle(color: Color(0xFFE91E63), fontWeight: FontWeight.bold),
-              ),
+              icon: Icon(_isCompareMode ? Icons.close : Icons.compare_arrows_rounded, color: const Color(0xFFE91E63)),
+              label: Text(_isCompareMode ? 'Batal' : 'Bandingkan', style: const TextStyle(color: Color(0xFFE91E63), fontWeight: FontWeight.bold)),
             ),
         ],
       ),
@@ -275,10 +230,7 @@ class _SavedProductsScreenState extends State<SavedProductsScreen> {
               backgroundColor: _selectedForCompare.length == 2 ? const Color(0xFFE91E63) : Colors.grey,
               onPressed: _selectedForCompare.length == 2 ? _showComparisonModal : null,
               icon: const Icon(Icons.balance, color: Colors.white),
-              label: Text(
-                'Bandingkan Sekarang (${_selectedForCompare.length}/2)',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
+              label: Text('Bandingkan Sekarang (${_selectedForCompare.length}/2)', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             )
           : null,
       body: Stack(

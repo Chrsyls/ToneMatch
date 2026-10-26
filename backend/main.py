@@ -53,7 +53,6 @@ def init_db():
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(255)")
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS password VARCHAR(255)")
         
-        # Pastikan akun Super Admin default memiliki password 'admin123'
         default_pw = hash_password("admin123")
         cursor.execute("SELECT uid FROM users WHERE uid = 'usr_dummy_01'")
         if not cursor.fetchone():
@@ -67,12 +66,6 @@ def init_db():
                 (default_pw,)
             )
 
-        cursor.execute("SHOW TABLES LIKE 'makeup_products'")
-        if cursor.fetchone():
-            cursor.execute("SHOW COLUMNS FROM makeup_products LIKE 'image_url'")
-            if not cursor.fetchone():
-                cursor.execute("ALTER TABLE makeup_products ADD COLUMN image_url TEXT")
-                
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS makeup_products (
                 product_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -156,7 +149,6 @@ async def login_user(req: LoginRequest):
             conn.close()
             return JSONResponse(status_code=401, content={"success": False, "error": "Email tidak ditemukan!"})
             
-        # Jika user lama belum punya password, cocokkan atau izinkan login dengan set password baru
         if user.get("password") and user["password"] != hashed_pw:
             cursor.close()
             conn.close()
@@ -168,7 +160,6 @@ async def login_user(req: LoginRequest):
         return {"success": True, "message": f"Selamat datang kembali, {user['name']}!", "data": user}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
-
 
 # =====================================================================
 # SMART IMAGE MATCHER & MEGA KATALOG
@@ -254,7 +245,7 @@ EXTENDED_CATALOGS = {
         ("Colorfit Perfect Glow Cushion 22N Light Ivory", 115000.0, "neutral", "cushion"),
         ("Colorfit Perfect Glow Cushion 32W Neutral Beige", 115000.0, "warm", "cushion"),
         ("Colorfit Fresh Matte Lip Ink 05 Berry Hype", 65000.0, "cool", "lip_tint"),
-        ("Lightening Liquid Concealer 01 Light", 42000.0, "neutral", "concealer"),
+        ("Lightening Matte Powder 02 Beige", 40000.0, "warm", "powder"),
         ("Colorfit Cream Blush 01 Sand Coral", 53000.0, "warm", "blush"),
     ],
     "emina": [
@@ -264,7 +255,7 @@ EXTENDED_CATALOGS = {
         ("Bare With Me Mineral Cushion 02 Natural", 126000.0, "neutral", "cushion"),
         ("Bare With Me Mineral Cushion 03 Caramel", 126000.0, "warm", "cushion"),
         ("Glossy Stain Lip Tint 01 Autumn Bell", 52000.0, "cool", "lip_tint"),
-        ("Glossy Stain Lip Tint 04 Peach Sprinkles", 52000.0, "warm", "lip_tint"),
+        ("Daily Matte Loose Powder Warm Beige", 38000.0, "warm", "powder"),
         ("Cheek Lit Pressed Blush Pink", 41000.0, "cool", "blush"),
     ],
     "somethinc": [
@@ -273,74 +264,15 @@ EXTENDED_CATALOGS = {
         ("Copy Paste Breathable Mesh Cushion N01 Nina", 185900.0, "neutral", "cushion"),
         ("Ombrella Lip Totem Tint Noble Rose", 59000.0, "cool", "lip_tint"),
         ("Ombrella Lip Totem Tint Salmon Peach", 59000.0, "warm", "lip_tint"),
-        ("Checkmatte Transferproof Lipstick Bishop", 99000.0, "neutral", "lip_matte"),
-        ("Under Control HD Blur Loose Powder Translucent", 115000.0, "neutral", "powder"),
+        ("Under Control HD Blur Loose Powder Warm", 115000.0, "warm", "powder"),
         ("Tamago Airy Blush Molly Pink", 79000.0, "cool", "blush"),
-    ],
-    "blp": [
-        ("Lip Coat Butter Fudge", 139000.0, "warm", "lip_matte"),
-        ("Lip Coat Lavender Cream", 139000.0, "cool", "lip_matte"),
-        ("Cover Cushion N15 Medium Ivory", 189000.0, "neutral", "cushion"),
-        ("Cover Cushion W20 Warm Sand", 189000.0, "warm", "cushion"),
-        ("Face Base Foundation W10 Warm Ivory", 149000.0, "warm", "foundation"),
-        ("Cheek Stain Peach Melba", 99000.0, "warm", "blush"),
-    ],
-    "skintific": [
-        ("Cover All Perfect Cushion 01 Vanilla", 169000.0, "cool", "cushion"),
-        ("Cover All Perfect Cushion 02 Ivory", 169000.0, "neutral", "cushion"),
-        ("Cover All Perfect Cushion 03A Almond", 169000.0, "warm", "cushion"),
-        ("Perfect Stay Velvet Matte Cushion Rose", 179000.0, "cool", "cushion"),
-        ("Ultra Cover Powder Foundation 02 Natural", 149000.0, "neutral", "powder"),
     ],
     "make over": [
         ("Powerstay 24H Weightless Liquid Foundation W22 Warm Ivory", 178000.0, "warm", "foundation"),
         ("Powerstay 24H Weightless Liquid Foundation C21 Pink Ivory", 178000.0, "cool", "foundation"),
-        ("Powerstay 24H Weightless Liquid Foundation N30 Natural Beige", 178000.0, "neutral", "foundation"),
+        ("Powerstay Matte Powder Foundation Warm Sand", 188000.0, "warm", "powder"),
         ("Powerstay Transferproof Matte Lip Cream B01 No.1", 135000.0, "cool", "lip_matte"),
         ("Powerstay Transferproof Matte Lip Cream B10 Warm Coral", 135000.0, "warm", "lip_matte"),
-    ],
-    "esqa": [
-        ("Flawless Cushion Serum Milkshake", 185000.0, "cool", "cushion"),
-        ("Flawless Cushion Serum Custard", 185000.0, "warm", "cushion"),
-        ("Flawless Cushion Serum Vanilla", 185000.0, "neutral", "cushion"),
-        ("Slick Drip Serum Lip Tint Berry", 115000.0, "cool", "lip_tint"),
-        ("Goddess Eyeshadow Palette Peach", 195000.0, "warm", "eyeshadow"),
-    ],
-    "mop": [
-        ("Microblur Translucent Loose Powder", 159000.0, "neutral", "powder"),
-        ("So X-TRA! Peptides Sunscreen Foundation W21", 219000.0, "warm", "foundation"),
-        ("So X-TRA! Peptides Sunscreen Foundation C12", 219000.0, "cool", "foundation"),
-        ("AM to PM Colorfast Hypertint Berry", 119000.0, "cool", "lip_tint"),
-    ],
-    "luxcrime": [
-        ("Blur & Cover Two Way Cake Buttercream", 129000.0, "neutral", "powder"),
-        ("Blur & Cover Two Way Cake Opera", 129000.0, "cool", "powder"),
-        ("Blur & Cover Two Way Cake Honeycomb", 129000.0, "warm", "powder"),
-        ("Ultra Light Lip Stain Rose Sand", 109000.0, "cool", "lip_tint"),
-    ],
-    "rose all day": [
-        ("The Realest Lightweight Essence Cushion Warm Honey", 209000.0, "warm", "cushion"),
-        ("The Realest Lightweight Essence Cushion Fair", 209000.0, "cool", "cushion"),
-        ("Plush Lip Tint Pink Margarita", 119000.0, "cool", "lip_tint"),
-        ("Cheeky Flush Blush Sunset Peach", 115000.0, "warm", "blush"),
-    ],
-    "hanasui": [
-        ("Mattedorable Lip Cream 01 Kiss Ruby", 32000.0, "cool", "lip_matte"),
-        ("Mattedorable Lip Cream 07 Sparkle Peach", 32000.0, "warm", "lip_matte"),
-        ("Serum Cushion SoulMatte 01 Light", 75000.0, "neutral", "cushion"),
-        ("Serum Cushion SoulMatte 03 Warm Natural", 75000.0, "warm", "cushion"),
-    ],
-    "implora": [
-        ("Urban Lip Cream Matte 01 Dusky Nude", 24000.0, "neutral", "lip_matte"),
-        ("Urban Lip Cream Matte 02 Terra Cotta", 24000.0, "warm", "lip_matte"),
-        ("Urban Lip Cream Matte 03 Dark Berry", 24000.0, "cool", "lip_matte"),
-        ("Healthy Glow Cushion 02 Light Ivory", 68000.0, "neutral", "cushion"),
-    ],
-    "barenbliss": [
-        ("True Beauty Inside Cushion 01 Light Petal", 159000.0, "cool", "cushion"),
-        ("True Beauty Inside Cushion 02 Medium Blossom", 159000.0, "neutral", "cushion"),
-        ("True Beauty Inside Cushion 03 Warm Beige", 159000.0, "warm", "cushion"),
-        ("Peach Makes Perfect Lip Tint 01 Paradise Found", 69000.0, "warm", "lip_tint"),
     ],
 }
 
@@ -358,7 +290,7 @@ async def fetch_products(req: ScrapeRequest):
         matched_key = next((k for k in EXTENDED_CATALOGS.keys() if k in brand_query or brand_query in k), None)
         
         if matched_key:
-            display_brand = matched_key.title() if matched_key not in ["mop", "blp"] else matched_key.upper()
+            display_brand = matched_key.title()
             for p_name, p_price, p_tone, p_cat in EXTENDED_CATALOGS[matched_key]:
                 full_name = f"{display_brand} {p_name}" if not p_name.lower().startswith(matched_key) else p_name
                 p_img = CATEGORY_IMAGES.get(p_cat, get_accurate_product_image(full_name))
@@ -429,12 +361,14 @@ async def fetch_products(req: ScrapeRequest):
 
         if products_added == 0 and products_updated == 0:
             generated_catalog = [
-                (f"{display_brand} Flawless Glow Cushion W01 Warm Honey", 169000.0, "warm", "cushion"),
-                (f"{display_brand} Flawless Glow Cushion C01 Porcelain Rose", 169000.0, "cool", "cushion"),
-                (f"{display_brand} Flawless Glow Cushion N02 Natural Ivory", 169000.0, "neutral", "cushion"),
-                (f"{display_brand} Velvet Matte Lip Cream Peach Terracotta", 89000.0, "warm", "lip_matte"),
-                (f"{display_brand} Velvet Matte Lip Cream Mauve Berry", 89000.0, "cool", "lip_matte"),
-                (f"{display_brand} Juicy Glossy Lip Tint Classic Nude", 75000.0, "neutral", "lip_tint"),
+                (f"{display_brand} Flawless Glow Cushion W01 Warm Honey", 129000.0, "warm", "cushion"),
+                (f"{display_brand} Flawless Glow Cushion C01 Porcelain Rose", 129000.0, "cool", "cushion"),
+                (f"{display_brand} Flawless Glow Cushion N02 Natural Ivory", 129000.0, "neutral", "cushion"),
+                (f"{display_brand} Velvet Matte Lip Cream Peach Terracotta", 59000.0, "warm", "lip_matte"),
+                (f"{display_brand} Velvet Matte Lip Cream Mauve Berry", 59000.0, "cool", "lip_matte"),
+                (f"{display_brand} Soft Blur Compact Powder Warm Beige", 65000.0, "warm", "powder"),
+                (f"{display_brand} Soft Blur Compact Powder Cool Pink", 65000.0, "cool", "powder"),
+                (f"{display_brand} Soft Blur Translucent Setting Powder", 65000.0, "neutral", "powder"),
             ]
             for p_name, p_price, p_tone, p_cat in generated_catalog:
                 p_img = CATEGORY_IMAGES[p_cat]
@@ -734,7 +668,7 @@ def get_all_users():
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT uid, name, email, role, created_at FROM users ORDER BY created_at DESC")
+        cursor.execute("SELECT uid, name, email, role, avatar_url, created_at FROM users ORDER BY created_at DESC")
         users = cursor.fetchall()
         for u in users:
             if isinstance(u.get('created_at'), datetime):
@@ -758,19 +692,22 @@ async def update_user_role(target_uid: str, request: Request):
         conn.commit()
         cursor.close()
         conn.close()
-        return {"success": True, "message": "Role diperbarui!"}
+        return {"success": True, "message": f"Role berhasil diubah menjadi {new_role.upper()}!"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
+# PERBAIKAN HAPUS AKUN UNTUK SUPER ADMIN (MENGHAPUS DATA TERKAIT AGAR TIDAK ERROR FOREIGN KEY)
 @app.delete("/api/v1/admin/users/{target_uid}")
 def delete_user(target_uid: str):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        cursor.execute("DELETE FROM favorite_products WHERE user_id = %s", (target_uid,))
+        cursor.execute("DELETE FROM classification_histories WHERE user_id = %s", (target_uid,))
         cursor.execute("DELETE FROM users WHERE uid = %s", (target_uid,))
         conn.commit()
         cursor.close()
         conn.close()
-        return {"success": True, "message": "Pengguna dihapus"}
+        return {"success": True, "message": "Akun pengguna beserta seluruh datanya berhasil dihapus!"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
