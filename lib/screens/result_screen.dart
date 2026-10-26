@@ -158,7 +158,7 @@ class _ResultScreenState extends State<ResultScreen> {
         'jewelryColor': const Color(0xFFD4AF37),
         'bestColors': [
           {'name': 'Terracotta', 'color': const Color(0xFFE2725B)},
-          {'name': 'Mustard', 'color': const Color(0xFFDB58)},
+          {'name': 'Mustard', 'color': const Color(0xFFFFDB58)},
           {'name': 'Olive Green', 'color': const Color(0xFF808000)},
           {'name': 'Warm Peach', 'color': const Color(0xFFFFCBA4)},
           {'name': 'Cream Gold', 'color': const Color(0xFFF5DEB3)},
@@ -168,7 +168,7 @@ class _ResultScreenState extends State<ResultScreen> {
     } else if (tone == 'cool') {
       return {
         'jewelry': 'Perak (Silver) & Platinum',
-        'jewelryIcon': Icons.Auto_awesome,
+        'jewelryIcon': Icons.auto_awesome, // PERBAIKAN HURUF KECIL
         'jewelryColor': const Color(0xFF9E9E9E),
         'bestColors': [
           {'name': 'Royal Blue', 'color': const Color(0xFF4169E1)},
@@ -206,7 +206,6 @@ class _ResultScreenState extends State<ResultScreen> {
     void calculateBundle(StateSetter setModalState) {
       final double maxBudget = double.tryParse(budgetCtrl.text.replaceAll('.', '').replaceAll(',', '')) ?? 250000;
       
-      // Kelompokkan produk dari yang paling terjangkau
       final sorted = List<dynamic>.from(_recommendations)
         ..sort((a, b) => (double.tryParse(a['price'].toString()) ?? 0).compareTo(double.tryParse(b['price'].toString()) ?? 0));
 
@@ -228,7 +227,6 @@ class _ResultScreenState extends State<ResultScreen> {
         }
       }
 
-      // Jika masih ada sisa budget dan jumlah barang < 3, tambahkan produk lain yang muat
       if (chosen.length < 3) {
         for (var item in sorted) {
           if (!chosen.contains(item)) {
@@ -324,7 +322,6 @@ class _ResultScreenState extends State<ResultScreen> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    // Pilihan Cepat Budget
                     Wrap(
                       spacing: 8,
                       children: [150000, 250000, 400000, 600000].map((amt) {
@@ -688,7 +685,7 @@ class _ResultScreenState extends State<ResultScreen> {
                       ),
                       const SizedBox(height: 20),
 
-                      // 2. FITUR 2: PANDUAN PALET WARNA & PERHIASAN (PERSONAL COLOR SWATCHES)
+                      // 2. FITUR 2: PANDUAN PALET WARNA & PERHIASAN
                       Container(
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
@@ -770,7 +767,7 @@ class _ResultScreenState extends State<ResultScreen> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         onPressed: _showBudgetBuilderModal,
-                        icon: const Icon(Icons.auto_Graph_rounded, color: Color(0xFFFFC107)),
+                        icon: const Icon(Icons.auto_graph_rounded, color: Color(0xFFFFC107)), // PERBAIKAN HURUF KECIL
                         label: const Text('Racik Paket Makeup Sesuai Budget 💰', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       ),
 

@@ -49,22 +49,44 @@ def init_db():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
-        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(255)")
-        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS password VARCHAR(255)")
-        
-        default_pw = hash_password("admin123")
-        cursor.execute("SELECT uid FROM users WHERE uid = 'usr_dummy_01'")
+        # Pastikan kolom role mendukung super_admin, admin, user
+        try:
+            cursor.execute("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
+        except Exception as e:
+            print(f"Role column notice: {e}")
+
+        # Cek dan tambahkan kolom avatar_url dengan aman untuk semua versi MySQL
+        cursor.execute("SHOW COLUMNS FROM users LIKE 'avatar_url'")
         if not cursor.fetchone():
+            cursor.execute("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(255)")
+
+        # Cek dan tambahkan kolom password dengan aman untuk semua versi MySQL
+        cursor.execute("SHOW COLUMNS FROM users LIKE 'password'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE users ADD COLUMN password VARCHAR(255)")
+        
+        # Pastikan akun Super Admin test@tonematch.app selalu terdaftar dengan password admin123
+        default_pw = hash_password("admin123")
+        cursor.execute("SELECT uid FROM users WHERE email = 'test@tonematch.app'")
+        row_by_email = cursor.fetchone()
+        
+        if row_by_email:
             cursor.execute(
-                "INSERT INTO users (uid, email, name, password, role) VALUES (%s, %s, %s, %s, %s)",
-                ('usr_dummy_01', 'test@tonematch.app', 'Alvito Aryo', default_pw, 'super_admin')
-            )
-        else:
-            cursor.execute(
-                "UPDATE users SET password = %s WHERE uid = 'usr_dummy_01' AND (password IS NULL OR password = '')",
+                "UPDATE users SET role = 'super_admin', password = %s WHERE email = 'test@tonematch.app'",
                 (default_pw,)
             )
+        else:
+            cursor.execute("SELECT uid FROM users WHERE uid = 'usr_dummy_01'")
+            if cursor.fetchone():
+                cursor.execute(
+                    "UPDATE users SET email = 'test@tonematch.app', name = 'Alvito Aryo', role = 'super_admin', password = %s WHERE uid = 'usr_dummy_01'",
+                    (default_pw,)
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO users (uid, email, name, password, role) VALUES (%s, %s, %s, %s, %s)",
+                    ('usr_dummy_01', 'test@tonematch.app', 'Alvito Aryo', default_pw, 'super_admin')
+                )
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS makeup_products (
@@ -77,6 +99,10 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        cursor.execute("SHOW COLUMNS FROM makeup_products LIKE 'image_url'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE makeup_products ADD COLUMN image_url TEXT")
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS favorite_products (
@@ -139,21 +165,60 @@ async def login_user(req: LoginRequest):
         cursor = conn.cursor(dictionary=True)
         
         email_clean = req.email.strip().lower()
-        hashed_pw = hash_password(req.password)
+        hashed_pw = hash_password(req.password.strip())
         
-        cursor.execute("SELECT uid, name, email, role, avatar_url, password FROM users WHERE email = %s", (email_clean,))
+        # Pastikan kolom password ada jika tabel dibuat dari versi lama
+        cursor.execute("SHOW COLUMNS FROM users LIKE 'password'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE users ADD COLUMN password VARCHAR(255)")
+            conn.commit()
+
+        # Jaminan otomatis untuk akun Super Admin Default (test@tonematch.app / admin123)
+        if email_clean == "test@tonematch.app" and req.password.strip() == "admin123":
+            cursor.execute("SELECT uid, name, email, role, avatar_url FROM users WHERE email = %s", (email_clean,))
+            admin_user = cursor.fetchone()
+            if not admin_user:
+                cursor.execute("SELECT uid FROM users WHERE uid = 'usr_dummy_01'")
+                if cursor.fetchone():
+                    cursor.execute(
+                        "UPDATE users SET email = %s, role = 'super_admin', password = %s WHERE uid = 'usr_dummy_01'",
+                        (email_clean, hashed_pw)
+                    )
+                else:
+                    cursor.execute(
+                        "INSERT INTO users (uid, name, email, password, role) VALUES ('usr_dummy_01', 'Alvito Aryo', %s, %s, 'super_admin')",
+                        (email_clean, hashed_pw)
+                    )
+                conn.commit()
+                cursor.execute("SELECT uid, name, email, role, avatar_url FROM users WHERE email = %s", (email_clean,))
+                admin_user = cursor.fetchone()
+            else:
+                cursor.execute("UPDATE users SET role = 'super_admin', password = %s WHERE email = %s", (hashed_pw, email_clean))
+                conn.commit()
+                admin_user['role'] = 'super_admin'
+
+            cursor.close()
+            conn.close()
+            return {"success": True, "message": f"Selamat datang Super Admin, {admin_user['name']}!", "data": admin_user}
+
+        cursor.execute("SELECT uid, name, email, role, avatar_url, password FROM users WHERE LOWER(email) = %s", (email_clean,))
         user = cursor.fetchone()
         
         if not user:
             cursor.close()
             conn.close()
-            return JSONResponse(status_code=401, content={"success": False, "error": "Email tidak ditemukan!"})
+            return JSONResponse(status_code=401, content={"success": False, "error": "Email tidak ditemukan! Silakan daftar akun terlebih dahulu."})
             
         if user.get("password") and user["password"] != hashed_pw:
             cursor.close()
             conn.close()
             return JSONResponse(status_code=401, content={"success": False, "error": "Password yang Anda masukkan salah!"})
             
+        # Jika user lama belum memiliki password di DB, simpan password saat pertama kali login
+        if not user.get("password"):
+            cursor.execute("UPDATE users SET password = %s WHERE uid = %s", (hashed_pw, user["uid"]))
+            conn.commit()
+
         user.pop("password", None)
         cursor.close()
         conn.close()
@@ -696,7 +761,6 @@ async def update_user_role(target_uid: str, request: Request):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# PERBAIKAN HAPUS AKUN UNTUK SUPER ADMIN (MENGHAPUS DATA TERKAIT AGAR TIDAK ERROR FOREIGN KEY)
 @app.delete("/api/v1/admin/users/{target_uid}")
 def delete_user(target_uid: str):
     try:

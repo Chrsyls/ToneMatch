@@ -39,7 +39,10 @@ class _AuthScreenState extends State<AuthScreen> {
 
     if (email.isEmpty || password.isEmpty || (!_isLogin && name.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Harap lengkapi semua kolom!'), backgroundColor: Colors.redAccent),
+        const SnackBar(
+          content: Text('Harap lengkapi semua kolom!'),
+          backgroundColor: Colors.redAccent,
+        ),
       );
       return;
     }
@@ -52,11 +55,13 @@ class _AuthScreenState extends State<AuthScreen> {
           ? {'email': email, 'password': password}
           : {'name': name, 'email': email, 'password': password};
 
-      final response = await http.post(
-        Uri.parse('$baseUrl$endpoint'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 8));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl$endpoint'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 8));
 
       final data = jsonDecode(response.body);
 
@@ -68,12 +73,14 @@ class _AuthScreenState extends State<AuthScreen> {
         await prefs.setString('user_email', user['email']);
         await prefs.setString('user_role', user['role'] ?? 'user');
 
-        // Reset cache statis di ProfileScreen agar memuat profil akun yang baru login
         ProfileScreenState.resetCache();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(data['message']), backgroundColor: Colors.green),
+            SnackBar(
+              content: Text(data['message']),
+              backgroundColor: Colors.green,
+            ),
           );
           Navigator.pushReplacement(
             context,
@@ -83,27 +90,25 @@ class _AuthScreenState extends State<AuthScreen> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(data['error'] ?? 'Autentikasi gagal'), backgroundColor: Colors.redAccent),
+            SnackBar(
+              content: Text(data['error'] ?? 'Autentikasi gagal'),
+              backgroundColor: Colors.redAccent,
+            ),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal terhubung ke server: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(
+            content: Text('Gagal terhubung ke server: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  void _fillDemoAdmin() {
-    setState(() {
-      _isLogin = true;
-      _emailController.text = 'test@tonematch.app';
-      _passwordController.text = 'admin123';
-    });
   }
 
   @override
@@ -125,19 +130,33 @@ class _AuthScreenState extends State<AuthScreen> {
                         color: Colors.white.withOpacity(0.6),
                         shape: BoxShape.circle,
                         boxShadow: [
-                          BoxShadow(color: const Color(0xFFE91E63).withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 8)),
+                          BoxShadow(
+                            color: const Color(0xFFE91E63).withOpacity(0.2),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
                         ],
                       ),
-                      child: const Icon(Icons.face_retouching_natural, size: 54, color: Color(0xFFE91E63)),
+                      child: const Icon(
+                        Icons.face_retouching_natural,
+                        size: 54,
+                        color: Color(0xFFE91E63),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     const Text(
                       'ToneMatch',
-                      style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: Color(0xFF4A2333)),
+                      style: TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF4A2333),
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      _isLogin ? 'Masuk untuk melihat rekomendasi kecantikanmu' : 'Buat akun baru dan temukan undertone kulitmu',
+                      _isLogin
+                          ? 'Masuk untuk melihat rekomendasi kecantikanmu'
+                          : 'Buat akun baru dan temukan undertone kulitmu',
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Color(0xFF7A5C61), fontSize: 14),
                     ),
@@ -152,7 +171,10 @@ class _AuthScreenState extends State<AuthScreen> {
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.55),
                             borderRadius: BorderRadius.circular(28),
-                            border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.8),
+                              width: 1.5,
+                            ),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -171,7 +193,9 @@ class _AuthScreenState extends State<AuthScreen> {
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(vertical: 10),
                                           decoration: BoxDecoration(
-                                            color: _isLogin ? const Color(0xFFE91E63) : Colors.transparent,
+                                            color: _isLogin
+                                                ? const Color(0xFFE91E63)
+                                                : Colors.transparent,
                                             borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: Text(
@@ -179,7 +203,9 @@ class _AuthScreenState extends State<AuthScreen> {
                                             textAlign: TextAlign.center,
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
-                                              color: _isLogin ? Colors.white : const Color(0xFF4A2333),
+                                              color: _isLogin
+                                                  ? Colors.white
+                                                  : const Color(0xFF4A2333),
                                             ),
                                           ),
                                         ),
@@ -191,7 +217,9 @@ class _AuthScreenState extends State<AuthScreen> {
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(vertical: 10),
                                           decoration: BoxDecoration(
-                                            color: !_isLogin ? const Color(0xFFE91E63) : Colors.transparent,
+                                            color: !_isLogin
+                                                ? const Color(0xFFE91E63)
+                                                : Colors.transparent,
                                             borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: Text(
@@ -199,7 +227,9 @@ class _AuthScreenState extends State<AuthScreen> {
                                             textAlign: TextAlign.center,
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
-                                              color: !_isLogin ? Colors.white : const Color(0xFF4A2333),
+                                              color: !_isLogin
+                                                  ? Colors.white
+                                                  : const Color(0xFF4A2333),
                                             ),
                                           ),
                                         ),
@@ -215,10 +245,16 @@ class _AuthScreenState extends State<AuthScreen> {
                                   controller: _nameController,
                                   decoration: InputDecoration(
                                     labelText: 'Nama Lengkap',
-                                    prefixIcon: const Icon(Icons.person_outline, color: Color(0xFFE91E63)),
+                                    prefixIcon: const Icon(
+                                      Icons.person_outline,
+                                      color: Color(0xFFE91E63),
+                                    ),
                                     filled: true,
                                     fillColor: Colors.white.withOpacity(0.8),
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: BorderSide.none,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 14),
@@ -229,10 +265,16 @@ class _AuthScreenState extends State<AuthScreen> {
                                 keyboardType: TextInputType.emailAddress,
                                 decoration: InputDecoration(
                                   labelText: 'Alamat Email',
-                                  prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFFE91E63)),
+                                  prefixIcon: const Icon(
+                                    Icons.email_outlined,
+                                    color: Color(0xFFE91E63),
+                                  ),
                                   filled: true,
                                   fillColor: Colors.white.withOpacity(0.8),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: BorderSide.none,
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 14),
@@ -242,14 +284,27 @@ class _AuthScreenState extends State<AuthScreen> {
                                 obscureText: _obscurePassword,
                                 decoration: InputDecoration(
                                   labelText: 'Password',
-                                  prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFFE91E63)),
+                                  prefixIcon: const Icon(
+                                    Icons.lock_outline,
+                                    color: Color(0xFFE91E63),
+                                  ),
                                   suffixIcon: IconButton(
-                                    icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
-                                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                                    icon: Icon(
+                                      _obscurePassword
+                                          ? Icons.visibility_off
+                                          : Icons.visibility,
+                                      color: Colors.grey,
+                                    ),
+                                    onPressed: () => setState(
+                                      () => _obscurePassword = !_obscurePassword,
+                                    ),
                                   ),
                                   filled: true,
                                   fillColor: Colors.white.withOpacity(0.8),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: BorderSide.none,
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 24),
@@ -258,28 +313,29 @@ class _AuthScreenState extends State<AuthScreen> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFFE91E63),
                                   padding: const EdgeInsets.symmetric(vertical: 15),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
                                 ),
                                 onPressed: _isLoading ? null : _submitAuth,
                                 child: _isLoading
-                                    ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                                    ? const SizedBox(
+                                        height: 22,
+                                        width: 22,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2.5,
+                                        ),
+                                      )
                                     : Text(
                                         _isLogin ? 'Masuk Sekarang' : 'Buat Akun Baru',
-                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
                                       ),
                               ),
-
-                              if (_isLogin) ...[
-                                const SizedBox(height: 12),
-                                TextButton.icon(
-                                  onPressed: _fillDemoAdmin,
-                                  icon: const Icon(Icons.admin_panel_settings_outlined, size: 18, color: Color(0xFF4A2333)),
-                                  label: const Text(
-                                    'Isi Otomatis Akun Super Admin',
-                                    style: TextStyle(color: Color(0xFF4A2333), fontWeight: FontWeight.w600, fontSize: 12),
-                                  ),
-                                ),
-                              ],
                             ],
                           ),
                         ),
