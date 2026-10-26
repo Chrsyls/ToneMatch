@@ -1,21 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'firebase_options.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/main_navigation.dart';
+import 'screens/auth_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
 
-  runApp(const ToneMatchApp());
+  // Cek apakah ada sesi login yang tersimpan di HP
+  final prefs = await SharedPreferences.getInstance();
+  final String? savedUid = prefs.getString('user_uid');
+  final bool isLoggedIn = savedUid != null && savedUid.isNotEmpty;
+
+  runApp(ToneMatchApp(isLoggedIn: isLoggedIn));
 }
 
 class ToneMatchApp extends StatelessWidget {
-  const ToneMatchApp({super.key});
+  final bool isLoggedIn;
+  const ToneMatchApp({super.key, required this.isLoggedIn});
 
   @override
   Widget build(BuildContext context) {
@@ -29,10 +31,7 @@ class ToneMatchApp extends StatelessWidget {
           secondary: const Color(0xFFFFC107),
         ),
         useMaterial3: true,
-        
-        // PERBAIKAN: Gunakan fontFamily langsung untuk menghindari bentrok class TextTheme
         fontFamily: GoogleFonts.josefinSans().fontFamily,
-        
         appBarTheme: const AppBarTheme(
           centerTitle: true,
           elevation: 0,
@@ -48,7 +47,8 @@ class ToneMatchApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const MainNavigation(), 
+      // Jika sudah login langsung ke MainNavigation, jika belum ke AuthScreen
+      home: isLoggedIn ? const MainNavigation() : const AuthScreen(),
     );
   }
 }

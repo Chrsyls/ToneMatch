@@ -3,11 +3,13 @@ import 'dart:ui';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/dynamic_background.dart';
 import 'edit_profile_screen.dart';
 import 'saved_products_screen.dart';
 import 'admin_product_screen.dart';
 import 'super_admin_dashboard_screen.dart';
+import 'auth_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -18,11 +20,18 @@ class ProfileScreen extends StatefulWidget {
 
 class ProfileScreenState extends State<ProfileScreen> {
   static Map<String, dynamic>? _userData;
-  static String? _localImagePath; 
-  static bool _isEditedLocally = false; 
+  static String? _localImagePath;
+  static bool _isEditedLocally = false;
 
   bool _isLoading = true;
-  final String baseUrl = 'http://10.4.89.111:8000'; // IP Anda
+  final String baseUrl = 'http://10.4.89.111:8000';
+
+  // Fungsi untuk membersihkan cache saat berganti akun / logout
+  static void resetCache() {
+    _userData = null;
+    _localImagePath = null;
+    _isEditedLocally = false;
+  }
 
   @override
   void initState() {
@@ -31,14 +40,17 @@ class ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> loadUserProfile() async {
-    if (_isEditedLocally) {
+    if (_isEditedLocally && _userData != null) {
       setState(() => _isLoading = false);
-      return; 
+      return;
     }
 
     setState(() => _isLoading = true);
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/v1/users/usr_dummy_01'));
+      final prefs = await SharedPreferences.getInstance();
+      final currentUid = prefs.getString('user_uid') ?? 'usr_dummy_01';
+
+      final response = await http.get(Uri.parse('$baseUrl/api/v1/users/$currentUid'));
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
         if (decoded['success'] == true) {
@@ -54,6 +66,44 @@ class ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Keluar Akun', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
+        content: const Text('Apakah Anda yakin ingin keluar dari akun ini?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Keluar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+      resetCache();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Berhasil keluar dari akun')),
+        );
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const AuthScreen()),
+          (route) => false,
+        );
+      }
     }
   }
 
@@ -84,7 +134,7 @@ class ProfileScreenState extends State<ProfileScreen> {
               children: [
                 const Text('Profil Saya', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
                 const SizedBox(height: 24),
-                
+
                 ClipRRect(
                   borderRadius: BorderRadius.circular(24),
                   child: BackdropFilter(
@@ -102,21 +152,21 @@ class ProfileScreenState extends State<ProfileScreen> {
                             width: 70, height: 70,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              image: _localImagePath != null 
-                                ? DecorationImage(image: FileImage(File(_localImagePath!)), fit: BoxFit.cover) 
-                                : (_userData?['avatar_url'] != null
-                                    ? DecorationImage(
-                                        image: NetworkImage('$baseUrl/${_userData!['avatar_url']}'),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : null),
-                              gradient: (_localImagePath == null && _userData?['avatar_url'] == null) 
-                                ? const LinearGradient(colors: [Color(0xFFE91E63), Color(0xFFff9a9e)]) 
-                                : null,
+                              image: _localImagePath != null
+                                  ? DecorationImage(image: FileImage(File(_localImagePath!)), fit: BoxFit.cover)
+                                  : (_userData?['avatar_url'] != null
+                                      ? DecorationImage(
+                                          image: NetworkImage('$baseUrl/${_userData!['avatar_url']}'),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null),
+                              gradient: (_localImagePath == null && _userData?['avatar_url'] == null)
+                                  ? const LinearGradient(colors: [Color(0xFFE91E63), Color(0xFFff9a9e)])
+                                  : null,
                             ),
-                            child: (_localImagePath == null && _userData?['avatar_url'] == null) 
-                              ? const Icon(Icons.person, size: 35, color: Colors.white) 
-                              : null,
+                            child: (_localImagePath == null && _userData?['avatar_url'] == null)
+                                ? const Icon(Icons.person, size: 35, color: Colors.white)
+                                : null,
                           ),
                           const SizedBox(width: 16),
                           Expanded(
@@ -143,7 +193,7 @@ class ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 24),
                 const Text('Menu Utama', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
                 const SizedBox(height: 12),
@@ -156,26 +206,25 @@ class ProfileScreenState extends State<ProfileScreen> {
                       context,
                       MaterialPageRoute(builder: (context) => const EditProfileScreen()),
                     );
-                    
+
                     if (result != null && result is Map<String, dynamic>) {
                       setState(() {
-                        _isEditedLocally = true; 
-                        
+                        _isEditedLocally = true;
+
                         if (_userData == null) _userData = {};
                         _userData!['name'] = result['name'];
                         _userData!['email'] = result['email'];
-                        
-                        // PERBAIKAN: Jika user menghapus/reset gambar
+
                         if (result['isAvatarRemoved'] == true) {
-                           _userData!['avatar_url'] = null;
-                           _localImagePath = null;
+                          _userData!['avatar_url'] = null;
+                          _localImagePath = null;
                         } else {
-                           if (result['serverAvatarUrl'] != null) {
-                              _userData!['avatar_url'] = result['serverAvatarUrl'];
-                           }
-                           if (result['imagePath'] != null) {
-                              _localImagePath = result['imagePath'];
-                           }
+                          if (result['serverAvatarUrl'] != null) {
+                            _userData!['avatar_url'] = result['serverAvatarUrl'];
+                          }
+                          if (result['imagePath'] != null) {
+                            _localImagePath = result['imagePath'];
+                          }
                         }
                       });
                     }
@@ -215,9 +264,7 @@ class ProfileScreenState extends State<ProfileScreen> {
 
                 const SizedBox(height: 30),
                 OutlinedButton(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Keluar akun berhasil')));
-                  },
+                  onPressed: _handleLogout,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.redAccent,
                     side: const BorderSide(color: Colors.redAccent, width: 1.5),
