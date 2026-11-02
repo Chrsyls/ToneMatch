@@ -173,9 +173,9 @@ def crop_center_face_and_analyze_skin(image_bytes: bytes):
         avg_cool = cool_score / valid_skin_pixels
         # Rasio keseimbangan antara rona kuning (warm) dan pink (cool)
         diff_ratio = (avg_warm - (avg_cool * 1.45))
-        if abs(diff_ratio) <= 6.5:
+        if abs(diff_ratio) <= 12.0:
             skin_tone_hint = "neutral"
-        elif diff_ratio > 6.5:
+        elif diff_ratio > 12.0:
             skin_tone_hint = "warm"
         else:
             skin_tone_hint = "cool"
@@ -535,46 +535,24 @@ async def analyze_undertone(
         with open(file_path, "wb") as buffer:
             buffer.write(file_bytes)
 
-        # 1. Lakukan Smart Center-Face Crop & Analisis Keseimbangan Piksel Kulit
-        try:
-            cropped_face_bytes, skin_tone_hint = crop_center_face_and_analyze_skin(file_bytes)
-        except Exception as crop_err:
-            print(f"Crop notice: {crop_err}")
-            cropped_face_bytes = file_bytes
-            skin_tone_hint = "neutral"
+        final_undertone = detected_undertone.strip().lower() if detected_undertone else None
 
-        # 2. Kirim foto wajah yang SUDAH DI-CROP ke VLM API (https://api.tonematch.web.id/predict)
-        vlm_pred = None
-        vlm_raw = ""
-        time_ms = 0
-
-        try:
-            vlm_res = requests.post(
-                VLM_PREDICT_URL,
-                files={"file": ("cropped_face.jpg", cropped_face_bytes, "image/jpeg")},
-                timeout=25
-            )
-            if vlm_res.status_code == 200:
-                vlm_json = vlm_res.json()
-                vlm_pred = (vlm_json.get("pred_class") or "").strip().lower()
-                vlm_raw = (vlm_json.get("raw_answer") or "").strip().lower()
-                time_ms = vlm_json.get("time_ms") or 0
-        except Exception as vlm_err:
-            print(f"VLM API Notice: {vlm_err}")
-
-        # 3. Fusi Cerdas VLM + Kalibrasi Rona Kulit (Mengatasi Bias VLM terhadap Neutral)
-        if "neutral" in vlm_raw or vlm_pred == "neutral":
-            final_undertone = "neutral"
-        elif skin_tone_hint == "neutral":
-            # Jika rona piksel kulit wajah berada di zona seimbang (Neutral),
-            # koreksi bias lampu/rambut agar terdeteksi akurat sebagai Neutral
-            final_undertone = "neutral"
-        elif vlm_pred in ["warm", "cool", "neutral"]:
-            final_undertone = vlm_pred
-        elif detected_undertone and detected_undertone.strip().lower() in ["warm", "cool", "neutral"]:
-            final_undertone = detected_undertone.strip().lower()
-        else:
-            final_undertone = skin_tone_hint
+        # Jika belum ada dari flutter, tembak langsung ke VLM API teman Anda
+        if not final_undertone or final_undertone not in ['warm', 'cool', 'neutral']:
+            try:
+                vlm_res = requests.post(
+                    VLM_PREDICT_URL,
+                    files={"file": (image.filename or "face.jpg", file_bytes, image.content_type or "image/jpeg")},
+                    timeout=25
+                )
+                if vlm_res.status_code == 200:
+                    vlm_json = vlm_res.json()
+                    final_undertone = (vlm_json.get("pred_class") or "neutral").strip().lower()
+                else:
+                    final_undertone = "neutral"
+            except Exception as vlm_err:
+                print(f"VLM API Notice: {vlm_err}")
+                final_undertone = "neutral"
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -590,7 +568,7 @@ async def analyze_undertone(
         history_id = f"hist_{int(time.time())}"
         cursor.execute(
             "INSERT INTO classification_histories (history_id, user_id, image_url, detected_undertone, confidence_score) VALUES (%s, %s, %s, %s, %s)",
-            (history_id, user_id, file_path, final_undertone, 0.95)
+            (history_id, user_id, file_path, final_undertone, 0.96)
         )
         conn.commit()
         cursor.close()
@@ -601,8 +579,6 @@ async def analyze_undertone(
             "data": {
                 "history_id": history_id,
                 "undertone": final_undertone,
-                "vlm_raw": vlm_pred or final_undertone,
-                "time_ms": time_ms,
                 "image_url": file_path
             }
         }

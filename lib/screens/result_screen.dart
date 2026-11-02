@@ -54,17 +54,18 @@ class _ResultScreenState extends State<ResultScreen> {
   Future<void> _fetchRecommendations() async {
     setState(() => _isLoading = true);
     try {
-      final uri = Uri.parse('$baseUrl/api/v1/recommendations/${widget.detectedUndertone}?user_id=$_currentUid');
+      final targetTone = widget.detectedUndertone.toLowerCase();
+      // Mengambil rekomendasi sesuai undertone terdeteksi (Warm, Cool, atau Neutral)
+      final uri = Uri.parse('$baseUrl/api/v1/recommendations/$targetTone?user_id=$_currentUid');
       final response = await http.get(uri);
       
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true) {
           setState(() {
-            final targetTone = widget.detectedUndertone.toLowerCase();
             _recommendations = (data['data'] ?? []).where((prod) {
               final prodTone = (prod['undertone'] ?? '').toString().toLowerCase();
-              return prodTone == targetTone;
+              return prodTone == targetTone || prodTone == 'neutral';
             }).toList();
             _filterProducts();
           });
@@ -79,7 +80,7 @@ class _ResultScreenState extends State<ResultScreen> {
     }
   }
 
-  // FITUR 4: DETEKSI KATEGORI JENIS PRODUK DARI NAMA
+  // Deteksi kategori jenis produk
   String _detectCategory(String productName) {
     final lower = productName.toLowerCase();
     if (lower.contains('lip') || lower.contains('tint') || lower.contains('matte') || lower.contains('gloss') || lower.contains('cream') || lower.contains('rouge')) {
@@ -148,7 +149,7 @@ class _ResultScreenState extends State<ResultScreen> {
     return currencyFormatter.format(parsedPrice);
   }
 
-  // FITUR 2: DATA PALET WARNA PAKAIAN & PERHIASAN SESUAI UNDERTONE
+  // Panduan Palet Warna (Warm, Cool, dan Neutral)
   Map<String, dynamic> _getColorPaletteGuide() {
     final tone = widget.detectedUndertone.toLowerCase();
     if (tone == 'warm') {
@@ -161,27 +162,26 @@ class _ResultScreenState extends State<ResultScreen> {
           {'name': 'Mustard', 'color': const Color(0xFFFFDB58)},
           {'name': 'Olive Green', 'color': const Color(0xFF808000)},
           {'name': 'Warm Peach', 'color': const Color(0xFFFFCBA4)},
-          {'name': 'Cream Gold', 'color': const Color(0xFFF5DEB3)},
         ],
-        'avoid': 'Biru Es (Icy Blue), Pink Fuchsia Neon, dan Abu-abu Perak Dingin.',
+        'avoid': 'Biru Es (Icy Blue) dan Pink Fuchsia Neon.',
       };
     } else if (tone == 'cool') {
       return {
         'jewelry': 'Perak (Silver) & Platinum',
-        'jewelryIcon': Icons.auto_awesome, // PERBAIKAN HURUF KECIL
+        'jewelryIcon': Icons.auto_awesome,
         'jewelryColor': const Color(0xFF9E9E9E),
         'bestColors': [
           {'name': 'Royal Blue', 'color': const Color(0xFF4169E1)},
           {'name': 'Emerald', 'color': const Color(0xFF50C878)},
           {'name': 'Berry Rose', 'color': const Color(0xFF990F4B)},
           {'name': 'Lavender', 'color': const Color(0xFFB57EDC)},
-          {'name': 'Crisp White', 'color': const Color(0xFFF8F9FA)},
         ],
-        'avoid': 'Oranye Terang, Kuning Mustard, dan Cokelat Kekuningan.',
+        'avoid': 'Oranye Terang dan Kuning Mustard.',
       };
     } else {
+      // Netral / Neutral
       return {
-        'jewelry': 'Rose Gold, Emas Muda & Perak',
+        'jewelry': 'Rose Gold, Emas Muda & Perak (Bebas)',
         'jewelryIcon': Icons.diamond_outlined,
         'jewelryColor': const Color(0xFFB76E79),
         'bestColors': [
@@ -189,14 +189,12 @@ class _ResultScreenState extends State<ResultScreen> {
           {'name': 'Jade Green', 'color': const Color(0xFF00A86B)},
           {'name': 'Soft Taupe', 'color': const Color(0xFF8B8589)},
           {'name': 'Teal Lagoon', 'color': const Color(0xFF008080)},
-          {'name': 'Creamy Nude', 'color': const Color(0xFFEDE6D6)},
         ],
-        'avoid': 'Warna Neon yang terlalu mencolok atau kontras ekstrem.',
+        'avoid': 'Warna neon yang terlalu mencolok atau kontras ekstrem.',
       };
     }
   }
 
-  // FITUR 5: KALKULATOR PAKET MAKEUP HEMAT (SMART BUDGET BUILDER)
   void _showBudgetBuilderModal() {
     final TextEditingController budgetCtrl = TextEditingController(text: '250000');
     List<dynamic> bundleResult = [];
@@ -223,19 +221,6 @@ class _ResultScreenState extends State<ResultScreen> {
             chosen.add(item);
             runningTotal += p;
             break;
-          }
-        }
-      }
-
-      if (chosen.length < 3) {
-        for (var item in sorted) {
-          if (!chosen.contains(item)) {
-            final p = double.tryParse(item['price'].toString()) ?? 0;
-            if (runningTotal + p <= maxBudget) {
-              chosen.add(item);
-              runningTotal += p;
-              if (chosen.length >= 3) break;
-            }
           }
         }
       }
@@ -271,9 +256,7 @@ class _ResultScreenState extends State<ResultScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Center(
-                      child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
-                    ),
+                    Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
                     const SizedBox(height: 16),
                     Row(
                       children: [
@@ -321,28 +304,13 @@ class _ResultScreenState extends State<ResultScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      children: [150000, 250000, 400000, 600000].map((amt) {
-                        return ActionChip(
-                          label: Text(_formatRupiah(amt), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          backgroundColor: const Color(0xFFFCE4EC),
-                          onPressed: () {
-                            budgetCtrl.text = amt.toString();
-                            calculateBundle(setModalState);
-                          },
-                        );
-                      }).toList(),
-                    ),
                     const Divider(height: 28),
                     if (bundleResult.isEmpty)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 20),
                         child: Center(
                           child: Text(
-                            'Anggaran terlalu kecil atau belum ada produk yang cukup. Coba naikkan batas anggaran Anda.',
-                            textAlign: TextAlign.center,
+                            'Anggaran terlalu kecil atau belum ada produk yang cukup.',
                             style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
                           ),
                         ),
@@ -353,10 +321,7 @@ class _ResultScreenState extends State<ResultScreen> {
                       ...bundleResult.map((item) => Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF0F5),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        decoration: BoxDecoration(color: const Color(0xFFFFF0F5), borderRadius: BorderRadius.circular(12)),
                         child: Row(
                           children: [
                             ClipRRect(
@@ -382,11 +347,7 @@ class _ResultScreenState extends State<ResultScreen> {
                       const SizedBox(height: 12),
                       Container(
                         padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.green.shade300),
-                        ),
+                        decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.green.shade300)),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -421,15 +382,9 @@ class _ResultScreenState extends State<ResultScreen> {
     String url = platform == 'shopee'
         ? 'https://shopee.co.id/search?keyword=$query'
         : 'https://www.tokopedia.com/search?st=product&q=$query';
-
-    final uri = Uri.parse(url);
     try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Tidak dapat membuka $platform'), backgroundColor: Colors.red));
-      }
-    }
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {}
   }
 
   void _showShareCardDialog() {
@@ -685,7 +640,7 @@ class _ResultScreenState extends State<ResultScreen> {
                       ),
                       const SizedBox(height: 20),
 
-                      // 2. FITUR 2: PANDUAN PALET WARNA & PERHIASAN
+                      // 2. PANDUAN PERSONAL COLOR & GAYA
                       Container(
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
@@ -758,7 +713,7 @@ class _ResultScreenState extends State<ResultScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // 3. FITUR 5: TOMBOL KALKULATOR PAKET MAKEUP HEMAT
+                      // 3. TOMBOL KALKULATOR PAKET MAKEUP
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF4A2333),
@@ -767,7 +722,7 @@ class _ResultScreenState extends State<ResultScreen> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         onPressed: _showBudgetBuilderModal,
-                        icon: const Icon(Icons.auto_graph_rounded, color: Color(0xFFFFC107)), // PERBAIKAN HURUF KECIL
+                        icon: const Icon(Icons.auto_graph_rounded, color: Color(0xFFFFC107)),
                         label: const Text('Racik Paket Makeup Sesuai Budget 💰', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       ),
 
@@ -775,7 +730,6 @@ class _ResultScreenState extends State<ResultScreen> {
                       const Text('Rekomendasi Produk Makeup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
                       const SizedBox(height: 12),
                       
-                      // Kolom Pencarian
                       TextField(
                         controller: _searchController,
                         decoration: InputDecoration(
@@ -789,7 +743,6 @@ class _ResultScreenState extends State<ResultScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      // 4. FITUR 4: FILTER CHIP KATEGORI JENIS PRODUK
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
@@ -808,7 +761,6 @@ class _ResultScreenState extends State<ResultScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Daftar Produk
                       _isLoading
                           ? const Padding(
                               padding: EdgeInsets.symmetric(vertical: 40),
@@ -848,7 +800,8 @@ class _ResultScreenState extends State<ResultScreen> {
                                           child: imageUrl != null && imageUrl.toString().isNotEmpty
                                               ? Image.network(imageUrl, width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.broken_image))
                                               : Container(
-                                                  width: 50, height: 50,
+                                                  width: 50,
+                                                  height: 50,
                                                   decoration: BoxDecoration(color: const Color(0xFFFCE4EC), borderRadius: BorderRadius.circular(10)),
                                                   child: const Icon(Icons.brush, color: Color(0xFFE91E63)),
                                                 ),
