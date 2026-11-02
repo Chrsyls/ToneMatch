@@ -1,13 +1,13 @@
-import 'dart:io';
 import 'dart:ui';
+import 'dart:io';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
-import 'result_screen.dart';
-import 'camera_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/dynamic_background.dart';
+import 'camera_screen.dart';
+import 'result_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,118 +17,152 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final ImagePicker _picker = ImagePicker();
-  final String baseUrl = 'http://10.4.89.111:8000'; // Sesuaikan IP Anda
+  bool _isAnalyzing = false;
+  bool _isCheckingHealth = true;
+  bool _isModelReady = false;
 
-  Future<void> _openCustomCamera() async {
-    final File? capturedImage = await Navigator.push(
+  final String vlmBaseUrl = 'https://api.tonematch.web.id';
+  final String localBaseUrl = 'http://10.4.89.111:8000';
+
+  @override
+  void initState() {
+    super.initState();
+    _checkVlmHealth();
+  }
+
+  // Cek kesehatan API VLM (GET /health)
+  Future<void> _checkVlmHealth() async {
+    setState(() => _isCheckingHealth = true);
+    try {
+      final response = await http
+          .get(Uri.parse('$vlmBaseUrl/health'))
+          .timeout(const Duration(seconds: 6));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _isModelReady = (data['status'] == 'ok' && data['model_ready'] == true);
+            _isCheckingHealth = false;
+          });
+        }
+        return;
+      }
+    } catch (e) {
+      debugPrint('VLM Health Check Error: $e');
+    }
+    if (mounted) {
+      setState(() {
+        _isModelReady = false;
+        _isCheckingHealth = false;
+      });
+    }
+  }
+
+  // 1. Buka CameraScreen (Sensor Wajah & Cahaya Oval)
+  Future<void> _openSmartCamera() async {
+    final File? capturedFile = await Navigator.push<File>(
       context,
       MaterialPageRoute(builder: (context) => const CameraScreen()),
     );
-    
-    if (capturedImage != null) {
-      await _processAndUploadImage(XFile(capturedImage.path));
+
+    if (capturedFile != null) {
+      await _analyzeWithVlmApi(capturedFile);
     }
   }
 
-  Future<void> _openGallery() async {
-    final XFile? pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      await _processAndUploadImage(pickedFile);
-    }
-  }
-
-  void _showLoadingDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Color(0xFFE91E63)),
-            SizedBox(height: 20),
-            Text(
-              'Menganalisis profil wajah...\nMenyelaraskan skema undertone ✨',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFF4A2333), fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-      ),
+  // 2. Pilih Foto dari Galeri
+  Future<void> _pickFromGallery() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1080,
     );
+
+    if (pickedFile != null) {
+      await _analyzeWithVlmApi(File(pickedFile.path));
+    }
   }
 
-  Future<void> _processAndUploadImage(XFile pickedFile) async {
-    _showLoadingDialog();
+  // 3. Kirim File Gambar ke VLM API (POST https://api.tonematch.web.id/predict)
+  Future<void> _analyzeWithVlmApi(File imageFile) async {
+    setState(() => _isAnalyzing = true);
 
     try {
-      final uri = Uri.parse('$baseUrl/api/v1/analyze/undertone');
-      var request = http.MultipartRequest('POST', uri);
+      final vlmRequest = http.MultipartRequest('POST', Uri.parse('$vlmBaseUrl/predict'));
+      vlmRequest.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
 
-      if (kIsWeb) {
-        final bytes = await pickedFile.readAsBytes();
-        request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: 'wajah.jpg'));
-      } else {
-        request.files.add(await http.MultipartFile.fromPath('image', pickedFile.path));
+      final vlmStream = await vlmRequest.send().timeout(const Duration(seconds: 30));
+      final vlmResponse = await http.Response.fromStream(vlmStream);
+
+      if (vlmResponse.statusCode == 400) {
+        throw Exception('Gambar tidak valid (400). Gunakan foto wajah yang jelas.');
+      } else if (vlmResponse.statusCode == 422) {
+        throw Exception('Model tidak bisa mengklasifikasi wajah (422). Pastikan wajah terlihat jelas.');
+      } else if (vlmResponse.statusCode == 503) {
+        throw Exception('Model VLM belum siap (503). Coba beberapa saat lagi.');
+      } else if (vlmResponse.statusCode != 200) {
+        throw Exception('Gagal menghubungi VLM API (Status: ${vlmResponse.statusCode})');
       }
 
-      var streamedResponse = await request.send();
-      var response = await http.Response.fromStream(streamedResponse);
-      var responseData = json.decode(response.body);
+      final vlmData = jsonDecode(vlmResponse.body);
+      final String predClass = (vlmData['pred_class'] ?? 'warm').toString().toLowerCase();
+      final int timeMs = vlmData['time_ms'] ?? 0;
 
-      if (mounted) Navigator.pop(context); // Tutup dialog loading
+      // Ambil UID pengguna yang sedang login
+      final prefs = await SharedPreferences.getInstance();
+      final String currentUid = prefs.getString('user_uid') ?? 'usr_dummy_01';
 
-      if (response.statusCode == 200 && responseData['success'] == true) {
-        if (!mounted) return;
-        _showSuccessDialog(responseData['message'], responseData['data']['undertone'], pickedFile.path);
-      } else {
-        throw Exception(responseData['error'] ?? 'Gagal menghubungi server.');
+      // Simpan riwayat foto & hasil VLM ke server MySQL VPS
+      String? savedServerImagePath;
+      try {
+        final saveReq = http.MultipartRequest('POST', Uri.parse('$localBaseUrl/api/v1/analyze/undertone'));
+        saveReq.fields['user_id'] = currentUid;
+        saveReq.fields['detected_undertone'] = predClass;
+        saveReq.files.add(await http.MultipartFile.fromPath('image', imageFile.path));
+
+        final saveStream = await saveReq.send().timeout(const Duration(seconds: 10));
+        final saveRes = await http.Response.fromStream(saveStream);
+
+        if (saveRes.statusCode == 200) {
+          final saveJson = jsonDecode(saveRes.body);
+          savedServerImagePath = saveJson['data']?['image_url'];
+        }
+      } catch (dbErr) {
+        debugPrint('Notice simpan riwayat lokal: $dbErr');
+      }
+
+      if (mounted) {
+        setState(() => _isAnalyzing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✨ Hasil VLM: ${predClass.toUpperCase()} (${timeMs}ms)'),
+            backgroundColor: Colors.green.shade700,
+          ),
+        );
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ResultScreen(
+              detectedUndertone: predClass,
+              imagePath: savedServerImagePath,
+            ),
+          ),
+        );
       }
     } catch (e) {
-      if (mounted) Navigator.pop(context); // Tutup dialog loading jika terjadi error
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-    }
-  }
-
-  void _showSuccessDialog(String message, String undertone, String imagePath) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        backgroundColor: Colors.white.withOpacity(0.95),
-        title: const Text('Analisis Selesai ✨', style: TextStyle(color: Color(0xFFE91E63), fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(message, style: const TextStyle(fontSize: 16, color: Color(0xFF4A2333))),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: const Color(0xFFFCE4EC), borderRadius: BorderRadius.circular(12)),
-              child: Row(
-                children: [
-                  const Icon(Icons.auto_awesome, color: Color(0xFFE91E63)),
-                  const SizedBox(width: 8),
-                  Text('Undertone: ${undertone.toUpperCase()}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFFE91E63))),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (context) => ResultScreen(detectedUndertone: undertone, imagePath: imagePath)));
-            },
-            child: const Text('Lihat Rekomendasi', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFE91E63))),
+      if (mounted) {
+        setState(() => _isAnalyzing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.redAccent,
           ),
-        ],
-      ),
-    );
+        );
+      }
+    }
   }
 
   @override
@@ -137,93 +171,169 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Stack(
         children: [
           const DynamicBackground(),
-          Positioned(
-            top: -50, left: -50,
-            child: Container(width: 200, height: 200, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.3))),
-          ),
-          Positioned(
-            bottom: 100, right: -80,
-            child: Container(width: 250, height: 250, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFE91E63).withOpacity(0.1))),
-          ),
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(32),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                  child: Container(
-                    padding: const EdgeInsets.all(32.0),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.3), 
-                      borderRadius: BorderRadius.circular(32),
-                      border: Border.all(color: Colors.white.withOpacity(0.6), width: 1.5), 
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Indikator Status Server VLM (/health)
+                    GestureDetector(
+                      onTap: _checkVlmHealth,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.75),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: _isCheckingHealth
+                                ? Colors.orange
+                                : (_isModelReady ? Colors.green : Colors.redAccent),
+                            width: 1.2,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.circle,
+                              size: 10,
+                              color: _isCheckingHealth
+                                  ? Colors.orange
+                                  : (_isModelReady ? Colors.green : Colors.redAccent),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _isCheckingHealth
+                                  ? 'Mengecek Server VLM AI...'
+                                  : (_isModelReady ? 'VLM AI Model Ready' : 'VLM Server Offline (Ketuk Refresh)'),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF4A2333),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: const LinearGradient(colors: [Color(0xFFE91E63), Color(0xFFff9a9e)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                            boxShadow: [BoxShadow(color: const Color(0xFFE91E63).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
+                    const SizedBox(height: 28),
+
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.6),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFE91E63).withOpacity(0.2),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
                           ),
-                          child: const Icon(Icons.face_retouching_natural, size: 50, color: Colors.white),
-                        ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          'ToneMatch',
-                          style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Color(0xFF4A2333)),
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Unggah foto wajah Anda untuk membedah profil undertone dan temukan makeup yang paling cocok.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 16, color: Color(0xFF7A5C61), height: 1.5),
-                        ),
-                        const SizedBox(height: 40),
-                        ElevatedButton(
-                          onPressed: _openCustomCamera,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFE91E63),
-                            foregroundColor: Colors.white,
-                            elevation: 8,
-                            shadowColor: const Color(0xFFE91E63).withOpacity(0.5),
-                            minimumSize: const Size(double.infinity, 56),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.camera_alt_outlined),
-                              SizedBox(width: 12),
-                              Text('Ambil Foto', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        OutlinedButton(
-                          onPressed: _openGallery,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF4A2333),
-                            side: const BorderSide(color: Colors.white, width: 2),
-                            backgroundColor: Colors.white.withOpacity(0.4),
-                            minimumSize: const Size(double.infinity, 56),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.photo_library_outlined),
-                              SizedBox(width: 12),
-                              Text('Pilih dari Galeri', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.face_retouching_natural,
+                        size: 72,
+                        color: Color(0xFFE91E63),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Analisis Undertone Kulit',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF4A2333),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Gunakan pemindai wajah pintar dengan sensor cahaya atau pilih foto dari galeri untuk dianalisis oleh VLM AI.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color(0xFF7A5C61),
+                        fontSize: 14,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+
+                    if (_isAnalyzing)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            padding: const EdgeInsets.all(28),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.65),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: Colors.white, width: 1.5),
+                            ),
+                            child: Column(
+                              children: const [
+                                CircularProgressIndicator(color: Color(0xFFE91E63)),
+                                SizedBox(height: 18),
+                                Text(
+                                  'VLM AI sedang menganalisis rona kulit wajahmu...',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF4A2333),
+                                  ),
+                                ),
+                                SizedBox(height: 6),
+                                Text(
+                                  'Mohon tunggu beberapa detik',
+                                  style: TextStyle(fontSize: 12, color: Color(0xFF7A5C61)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )
+                    else ...[
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE91E63),
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(double.infinity, 54),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 4,
+                        ),
+                        onPressed: _openSmartCamera,
+                        icon: const Icon(Icons.camera_front_rounded),
+                        label: const Text(
+                          'Pindai Wajah (Kamera Pintar)',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF4A2333),
+                          backgroundColor: Colors.white.withOpacity(0.45),
+                          side: const BorderSide(color: Color(0xFF4A2333), width: 1.5),
+                          minimumSize: const Size(double.infinity, 54),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        onPressed: _pickFromGallery,
+                        icon: const Icon(Icons.photo_library_outlined),
+                        label: const Text(
+                          'Pilih Foto dari Galeri',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),

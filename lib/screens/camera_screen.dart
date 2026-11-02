@@ -13,9 +13,11 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderStateMixin {
   CameraController? _controller;
   List<CameraDescription>? _cameras;
+  int _selectedCameraIdx = 0;
 
   bool _isCameraInitialized = false;
   bool _isProcessing = false;
+  bool _isTakingPicture = false;
 
   bool _isReady = false;
   bool _hasFace = false;
@@ -26,22 +28,33 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _scanController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
+    _scanController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
     _initCamera();
   }
 
-  Future<void> _initCamera() async {
+  Future<void> _initCamera({int? cameraIndex}) async {
     try {
-      _cameras = await availableCameras();
+      _cameras ??= await availableCameras();
       if (_cameras != null && _cameras!.isNotEmpty) {
-        CameraDescription selectedCamera = _cameras!.firstWhere(
-          (camera) => camera.lensDirection == CameraLensDirection.front,
-          orElse: () => _cameras!.first,
-        );
+        if (cameraIndex != null) {
+          _selectedCameraIdx = cameraIndex;
+        } else {
+          final frontIdx = _cameras!.indexWhere(
+            (camera) => camera.lensDirection == CameraLensDirection.front,
+          );
+          _selectedCameraIdx = frontIdx != -1 ? frontIdx : 0;
+        }
+
+        final CameraDescription selectedCamera = _cameras![_selectedCameraIdx];
+
+        await _controller?.dispose();
 
         _controller = CameraController(
           selectedCamera,
-          ResolutionPreset.medium, // Resolusi medium optimal untuk scanning frame cepat
+          ResolutionPreset.medium,
           enableAudio: false,
           imageFormatGroup: ImageFormatGroup.yuv420,
         );
@@ -53,10 +66,10 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
         }
 
         int frameCount = 0;
-        _controller!.startImageStream((CameraImage image) {
-          if (_isProcessing) return;
+        await _controller!.startImageStream((CameraImage image) {
+          if (_isProcessing || _isTakingPicture) return;
           frameCount++;
-          if (frameCount % 10 != 0) return; // Proses tiap 10 frame untuk cegah lag
+          if (frameCount % 10 != 0) return;
 
           _isProcessing = true;
           _checkLightingAndFace(image);
@@ -65,6 +78,13 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
     } catch (e) {
       debugPrint("Error inisialisasi kamera: $e");
     }
+  }
+
+  Future<void> _switchCamera() async {
+    if (_cameras == null || _cameras!.length < 2) return;
+    setState(() => _isCameraInitialized = false);
+    final nextIdx = (_selectedCameraIdx + 1) % _cameras!.length;
+    await _initCamera(cameraIndex: nextIdx);
   }
 
   void _checkLightingAndFace(CameraImage image) {
@@ -76,9 +96,8 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
         yTotal += yBytes[i];
       }
       double avgLuminance = yTotal / (yBytes.length / 20);
-      
-      // Batas cahaya yang aman
-      bool isLightingGood = avgLuminance > 50 && avgLuminance < 220; 
+
+      bool isLightingGood = avgLuminance > 50 && avgLuminance < 220;
 
       // 2. CEK WAJAH KETAT (Chrominance - U & V)
       bool isFaceDetected = false;
@@ -87,22 +106,16 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
         final uBytes = image.planes[1].bytes;
         final vBytes = image.planes[2].bytes;
 
-        // FOKUS AREA: Hanya memindai 40% area di tengah persis (menghindari baju dan tembok di pinggir)
         int startIdx = (uBytes.length * 0.3).toInt();
         int endIdx = (uBytes.length * 0.7).toInt();
 
         int skinPixelCount = 0;
         int totalSampledPixels = 0;
 
-        // Sampling lebih rapat (tiap 5 piksel) agar akurasi di tengah oval lebih tajam
         for (int i = startIdx; i < endIdx; i += 5) {
           int u = uBytes[i];
           int v = vBytes[i];
 
-          // ALGORITMA BARU: Membedakan benda mati dan kulit
-          // - V (Rona hangat/merah) di rentang 132-175
-          // - U (Rona dingin/biru) di rentang 75-130
-          // - (v - u >= 10): Mencegah tembok, pintu, atau benda netral lolos
           if (v >= 132 && v <= 175 && u >= 75 && u <= 130 && (v - u >= 10)) {
             skinPixelCount++;
           }
@@ -110,9 +123,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
         }
 
         double skinPercentage = (skinPixelCount / totalSampledPixels) * 100;
-        
-        // Syarat: Minimal 20% isi tengah oval harus kulit, dan tidak boleh dalam kondisi gelap gulita (avgLuminance > 40)
-        isFaceDetected = skinPercentage > 20.0 && avgLuminance > 40.0; 
+        isFaceDetected = skinPercentage > 20.0 && avgLuminance > 40.0;
       }
 
       // 3. LOGIKA INSTRUKSI UI
@@ -124,20 +135,20 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
             ? 'Terlalu Gelap, cari tempat lebih terang.'
             : 'Terlalu Terang, kurangi cahaya/hindari backlight.';
       } else {
-        status = 'Kondisi Optimal! Silakan ambil foto.';
+        status = 'Kondisi Optimal! Silakan ambil foto untuk VLM AI.';
       }
 
       bool isReady = isLightingGood && isFaceDetected;
 
-      if (_isReady != isReady || _statusText != status || _hasFace != isFaceDetected) {
+      if (mounted && (_isReady != isReady || _statusText != status || _hasFace != isFaceDetected)) {
         setState(() {
           _isReady = isReady;
           _hasFace = isFaceDetected;
           _statusText = status;
         });
       }
-    } catch (e) {
-      // Abaikan jika frame sedang diputar/rusak
+    } catch (_) {
+      // Abaikan frame yang sedang transisi
     } finally {
       _isProcessing = false;
     }
@@ -152,7 +163,9 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
 
   Future<void> _takePicture() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
-    if (_controller!.value.isTakingPicture) return;
+    if (_controller!.value.isTakingPicture || _isTakingPicture) return;
+
+    setState(() => _isTakingPicture = true);
 
     try {
       if (_controller!.value.isStreamingImages) {
@@ -161,10 +174,12 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
 
       final XFile picture = await _controller!.takePicture();
       if (mounted) {
+        // Kembalikan File foto ke HomeScreen untuk dikirim ke API VLM
         Navigator.pop(context, File(picture.path));
       }
     } catch (e) {
       debugPrint("Gagal mengambil gambar: $e");
+      if (mounted) setState(() => _isTakingPicture = false);
     }
   }
 
@@ -179,7 +194,9 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
     if (!_isCameraInitialized || _controller == null) {
       return const Scaffold(
         backgroundColor: Colors.black,
-        body: Center(child: CircularProgressIndicator(color: Color(0xFFE91E63))),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFFE91E63)),
+        ),
       );
     }
 
@@ -225,7 +242,11 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
                     decoration: BoxDecoration(
                       color: Colors.greenAccent,
                       boxShadow: [
-                        BoxShadow(color: Colors.greenAccent.withOpacity(0.8), blurRadius: 10, spreadRadius: 2)
+                        BoxShadow(
+                          color: Colors.greenAccent.withOpacity(0.8),
+                          blurRadius: 10,
+                          spreadRadius: 2,
+                        )
                       ],
                     ),
                   ),
@@ -233,7 +254,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
               },
             ),
 
-          // 4. Panel Instruksi
+          // 4. Panel Instruksi Pencahayaan & Wajah
           Positioned(
             top: MediaQuery.of(context).padding.top + 20,
             left: 24,
@@ -248,7 +269,9 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
                     color: Colors.black.withOpacity(0.55),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                        color: _isReady ? Colors.greenAccent.withOpacity(0.5) : Colors.white24, width: 1.5),
+                      color: _isReady ? Colors.greenAccent.withOpacity(0.5) : Colors.white24,
+                      width: 1.5,
+                    ),
                   ),
                   child: Column(
                     children: [
@@ -262,11 +285,14 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            _isReady ? 'Kondisi Optimal' : (!_hasFace ? 'Posisikan Wajah' : 'Periksa Cahaya'),
+                            _isReady
+                                ? 'Kondisi Optimal'
+                                : (!_hasFace ? 'Posisikan Wajah' : 'Periksa Cahaya'),
                             style: TextStyle(
-                                color: _isReady ? Colors.greenAccent : Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold),
+                              color: _isReady ? Colors.greenAccent : Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
@@ -283,36 +309,39 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
             ),
           ),
 
-          // 5. Tombol Aksi
+          // 5. Tombol Aksi Bawah (Batal, Jepret Foto, & Putar Kamera)
           Positioned(
-            bottom: MediaQuery.of(context).padding.bottom + 50,
-            left: 0,
-            right: 0,
+            bottom: MediaQuery.of(context).padding.bottom + 45,
+            left: 24,
+            right: 24,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                       side: const BorderSide(color: Colors.white54, width: 1.5),
                     ),
                   ),
-                  child: const Text('Batal', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: const Text('Batal', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                 ),
 
                 GestureDetector(
                   onTap: _takePicture,
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
-                    height: 75,
-                    width: 75,
+                    height: 76,
+                    width: 76,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: _isReady ? Colors.greenAccent : const Color(0xFFE91E63), width: 4),
+                      border: Border.all(
+                        color: _isReady ? Colors.greenAccent : const Color(0xFFE91E63),
+                        width: 4,
+                      ),
                       color: Colors.transparent,
                     ),
                     child: Center(
@@ -324,10 +353,29 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
                           shape: BoxShape.circle,
                           color: _isReady ? Colors.greenAccent : const Color(0xFFE91E63),
                         ),
-                        child: _isReady ? const Icon(Icons.camera_alt, color: Colors.black54, size: 28) : null,
+                        child: _isTakingPicture
+                            ? const Padding(
+                                padding: EdgeInsets.all(14.0),
+                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                              )
+                            : Icon(
+                                Icons.camera_alt,
+                                color: _isReady ? Colors.black87 : Colors.white,
+                                size: 28,
+                              ),
                       ),
                     ),
                   ),
+                ),
+
+                IconButton(
+                  onPressed: _switchCamera,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.white12,
+                    padding: const EdgeInsets.all(14),
+                  ),
+                  icon: const Icon(Icons.cameraswitch_rounded, color: Colors.white, size: 26),
+                  tooltip: 'Ganti Kamera',
                 ),
               ],
             ),
@@ -383,18 +431,13 @@ class FaceOverlayPainter extends CustomPainter {
     canvas.drawLine(Offset(marginX, marginY), Offset(marginX, marginY + mSize), markerPaint);
 
     canvas.drawLine(Offset(size.width - marginX, marginY), Offset(size.width - marginX - mSize, marginY), markerPaint);
-    canvas.drawLine(
-        Offset(size.width - marginX, marginY), Offset(size.width - marginX, marginY + mSize), markerPaint);
+    canvas.drawLine(Offset(size.width - marginX, marginY), Offset(size.width - marginX, marginY + mSize), markerPaint);
 
-    canvas.drawLine(
-        Offset(marginX, size.height - marginY - 80), Offset(marginX + mSize, size.height - marginY - 80), markerPaint);
-    canvas.drawLine(
-        Offset(marginX, size.height - marginY - 80), Offset(marginX, size.height - marginY - 80 - mSize), markerPaint);
+    canvas.drawLine(Offset(marginX, size.height - marginY - 80), Offset(marginX + mSize, size.height - marginY - 80), markerPaint);
+    canvas.drawLine(Offset(marginX, size.height - marginY - 80), Offset(marginX, size.height - marginY - 80 - mSize), markerPaint);
 
-    canvas.drawLine(Offset(size.width - marginX, size.height - marginY - 80),
-        Offset(size.width - marginX - mSize, size.height - marginY - 80), markerPaint);
-    canvas.drawLine(Offset(size.width - marginX, size.height - marginY - 80),
-        Offset(size.width - marginX, size.height - marginY - 80 - mSize), markerPaint);
+    canvas.drawLine(Offset(size.width - marginX, size.height - marginY - 80), Offset(size.width - marginX - mSize, size.height - marginY - 80), markerPaint);
+    canvas.drawLine(Offset(size.width - marginX, size.height - marginY - 80), Offset(size.width - marginX, size.height - marginY - 80 - mSize), markerPaint);
   }
 
   @override

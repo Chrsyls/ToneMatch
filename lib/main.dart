@@ -7,7 +7,6 @@ import 'screens/auth_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Cek apakah ada sesi login yang tersimpan di HP
   final prefs = await SharedPreferences.getInstance();
   final String? savedUid = prefs.getString('user_uid');
   final bool isLoggedIn = savedUid != null && savedUid.isNotEmpty;
@@ -47,7 +46,6 @@ class ToneMatchApp extends StatelessWidget {
           ),
         ),
       ),
-      // Jika sudah login langsung ke MainNavigation, jika belum ke AuthScreen
       home: isLoggedIn ? const MainNavigation() : const AuthScreen(),
     );
   }

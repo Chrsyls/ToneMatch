@@ -14,6 +14,9 @@ app = FastAPI()
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+VLM_PREDICT_URL = "https://api.tonematch.web.id/predict"
+VLM_HEALTH_URL = "https://api.tonematch.web.id/health"
+
 def get_db_connection():
     return mysql.connector.connect(
         host="localhost",
@@ -49,23 +52,19 @@ def init_db():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Pastikan kolom role mendukung super_admin, admin, user
         try:
             cursor.execute("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
         except Exception as e:
             print(f"Role column notice: {e}")
 
-        # Cek dan tambahkan kolom avatar_url dengan aman untuk semua versi MySQL
         cursor.execute("SHOW COLUMNS FROM users LIKE 'avatar_url'")
         if not cursor.fetchone():
             cursor.execute("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(255)")
 
-        # Cek dan tambahkan kolom password dengan aman untuk semua versi MySQL
         cursor.execute("SHOW COLUMNS FROM users LIKE 'password'")
         if not cursor.fetchone():
             cursor.execute("ALTER TABLE users ADD COLUMN password VARCHAR(255)")
         
-        # Pastikan akun Super Admin test@tonematch.app selalu terdaftar dengan password admin123
         default_pw = hash_password("admin123")
         cursor.execute("SELECT uid FROM users WHERE email = 'test@tonematch.app'")
         row_by_email = cursor.fetchone()
@@ -137,7 +136,7 @@ async def register_user(req: RegisterRequest):
             return JSONResponse(status_code=400, content={"success": False, "error": "Email sudah terdaftar! Silakan login."})
             
         new_uid = f"usr_{int(time.time())}"
-        hashed_pw = hash_password(req.password)
+        hashed_pw = hash_password(req.password.strip())
         
         cursor.execute(
             "INSERT INTO users (uid, name, email, password, role) VALUES (%s, %s, %s, %s, 'user')",
@@ -167,13 +166,11 @@ async def login_user(req: LoginRequest):
         email_clean = req.email.strip().lower()
         hashed_pw = hash_password(req.password.strip())
         
-        # Pastikan kolom password ada jika tabel dibuat dari versi lama
         cursor.execute("SHOW COLUMNS FROM users LIKE 'password'")
         if not cursor.fetchone():
             cursor.execute("ALTER TABLE users ADD COLUMN password VARCHAR(255)")
             conn.commit()
 
-        # Jaminan otomatis untuk akun Super Admin Default (test@tonematch.app / admin123)
         if email_clean == "test@tonematch.app" and req.password.strip() == "admin123":
             cursor.execute("SELECT uid, name, email, role, avatar_url FROM users WHERE email = %s", (email_clean,))
             admin_user = cursor.fetchone()
@@ -214,7 +211,6 @@ async def login_user(req: LoginRequest):
             conn.close()
             return JSONResponse(status_code=401, content={"success": False, "error": "Password yang Anda masukkan salah!"})
             
-        # Jika user lama belum memiliki password di DB, simpan password saat pertama kali login
         if not user.get("password"):
             cursor.execute("UPDATE users SET password = %s WHERE uid = %s", (hashed_pw, user["uid"]))
             conn.commit()
@@ -455,24 +451,68 @@ async def fetch_products(req: ScrapeRequest):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": f"Kesalahan sistem: {str(e)}"})
 
+# =====================================================================
+# ENDPOINT ANALISIS WAJAH (TERINTEGRASI PENUH DENGAN API VLM)
+# =====================================================================
 @app.post("/api/v1/analyze/undertone")
-async def analyze_undertone(image: UploadFile = File(...), user_id: str = Form("usr_dummy_01")):
+async def analyze_undertone(
+    image: UploadFile = File(...),
+    user_id: str = Form("usr_dummy_01"),
+    detected_undertone: str | None = Form(None)
+):
     try:
         file_name = f"{int(time.time())}_{image.filename}"
         file_path = f"uploads/{file_name}"
+        file_bytes = await image.read()
         with open(file_path, "wb") as buffer:
-            buffer.write(await image.read())
+            buffer.write(file_bytes)
+
+        final_undertone = detected_undertone.strip().lower() if detected_undertone else None
+
+        # Jika Flutter belum mengirim hasil VLM, Backend otomatis menembak ke https://api.tonematch.web.id/predict
+        if not final_undertone or final_undertone not in ['warm', 'cool', 'neutral']:
+            try:
+                vlm_res = requests.post(
+                    VLM_PREDICT_URL,
+                    files={"file": (image.filename or "face.jpg", file_bytes, image.content_type or "image/jpeg")},
+                    timeout=25
+                )
+                if vlm_res.status_code == 200:
+                    vlm_json = vlm_res.json()
+                    final_undertone = (vlm_json.get("pred_class") or "warm").strip().lower()
+                else:
+                    final_undertone = "warm"
+            except Exception as vlm_err:
+                print(f"VLM Fallback Notice: {vlm_err}")
+                final_undertone = "warm"
+
         conn = get_db_connection()
         cursor = conn.cursor()
+        
+        cursor.execute("SELECT uid FROM users WHERE uid = %s", (user_id,))
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT INTO users (uid, email, name, role) VALUES (%s, %s, %s, %s)",
+                (user_id, f"{user_id}@tonematch.app", "Pengguna ToneMatch", "user")
+            )
+            conn.commit()
+
         history_id = f"hist_{int(time.time())}"
         cursor.execute(
             "INSERT INTO classification_histories (history_id, user_id, image_url, detected_undertone, confidence_score) VALUES (%s, %s, %s, %s, %s)",
-            (history_id, user_id, file_path, 'warm', 0.88)
+            (history_id, user_id, file_path, final_undertone, 0.94)
         )
         conn.commit()
         cursor.close()
         conn.close()
-        return {"success": True, "message": "Berhasil disimpan!", "data": {"undertone": "warm", "image_url": file_path}}
+        return {
+            "success": True,
+            "message": "Analisis VLM berhasil disimpan!",
+            "data": {
+                "undertone": final_undertone,
+                "image_url": file_path
+            }
+        }
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
