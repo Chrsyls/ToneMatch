@@ -30,7 +30,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _checkVlmHealth();
   }
 
-  // Cek kesehatan API VLM (GET /health)
   Future<void> _checkVlmHealth() async {
     setState(() => _isCheckingHealth = true);
     try {
@@ -59,7 +58,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // 1. Buka CameraScreen (Sensor Wajah & Cahaya Oval)
   Future<void> _openSmartCamera() async {
     final File? capturedFile = await Navigator.push<File>(
       context,
@@ -67,90 +65,70 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (capturedFile != null) {
-      await _analyzeWithVlmApi(capturedFile);
+      await _analyzeFaceWithCroppedVlm(capturedFile);
     }
   }
 
-  // 2. Pilih Foto dari Galeri
   Future<void> _pickFromGallery() async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 85,
+      imageQuality: 90,
       maxWidth: 1080,
     );
 
     if (pickedFile != null) {
-      await _analyzeWithVlmApi(File(pickedFile.path));
+      await _analyzeFaceWithCroppedVlm(File(pickedFile.path));
     }
   }
 
-  // 3. Kirim File Gambar ke VLM API (POST https://api.tonematch.web.id/predict)
-  Future<void> _analyzeWithVlmApi(File imageFile) async {
+  // Mengirim foto ke Backend untuk di-Crop otomatis ke area wajah + diprediksi oleh VLM API + Kalibrasi Neutral
+  Future<void> _analyzeFaceWithCroppedVlm(File imageFile) async {
     setState(() => _isAnalyzing = true);
 
     try {
-      final vlmRequest = http.MultipartRequest('POST', Uri.parse('$vlmBaseUrl/predict'));
-      vlmRequest.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
-
-      final vlmStream = await vlmRequest.send().timeout(const Duration(seconds: 30));
-      final vlmResponse = await http.Response.fromStream(vlmStream);
-
-      if (vlmResponse.statusCode == 400) {
-        throw Exception('Gambar tidak valid (400). Gunakan foto wajah yang jelas.');
-      } else if (vlmResponse.statusCode == 422) {
-        throw Exception('Model tidak bisa mengklasifikasi wajah (422). Pastikan wajah terlihat jelas.');
-      } else if (vlmResponse.statusCode == 503) {
-        throw Exception('Model VLM belum siap (503). Coba beberapa saat lagi.');
-      } else if (vlmResponse.statusCode != 200) {
-        throw Exception('Gagal menghubungi VLM API (Status: ${vlmResponse.statusCode})');
-      }
-
-      final vlmData = jsonDecode(vlmResponse.body);
-      final String predClass = (vlmData['pred_class'] ?? 'warm').toString().toLowerCase();
-      final int timeMs = vlmData['time_ms'] ?? 0;
-
-      // Ambil UID pengguna yang sedang login
       final prefs = await SharedPreferences.getInstance();
       final String currentUid = prefs.getString('user_uid') ?? 'usr_dummy_01';
 
-      // Simpan riwayat foto & hasil VLM ke server MySQL VPS
-      String? savedServerImagePath;
-      try {
-        final saveReq = http.MultipartRequest('POST', Uri.parse('$localBaseUrl/api/v1/analyze/undertone'));
-        saveReq.fields['user_id'] = currentUid;
-        saveReq.fields['detected_undertone'] = predClass;
-        saveReq.files.add(await http.MultipartFile.fromPath('image', imageFile.path));
+      final req = http.MultipartRequest('POST', Uri.parse('$localBaseUrl/api/v1/analyze/undertone'));
+      req.fields['user_id'] = currentUid;
+      req.files.add(await http.MultipartFile.fromPath('image', imageFile.path));
 
-        final saveStream = await saveReq.send().timeout(const Duration(seconds: 10));
-        final saveRes = await http.Response.fromStream(saveStream);
+      final stream = await req.send().timeout(const Duration(seconds: 30));
+      final res = await http.Response.fromStream(stream);
 
-        if (saveRes.statusCode == 200) {
-          final saveJson = jsonDecode(saveRes.body);
-          savedServerImagePath = saveJson['data']?['image_url'];
+      if (res.statusCode == 200) {
+        final jsonRes = jsonDecode(res.body);
+        if (jsonRes['success'] == true) {
+          final data = jsonRes['data'];
+          final String detectedTone = (data['undertone'] ?? 'neutral').toString().toLowerCase();
+          final String? savedImagePath = data['image_url'];
+
+          if (mounted) {
+            setState(() => _isAnalyzing = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('✨ Undertone Terdeteksi: ${detectedTone.toUpperCase()}'),
+                backgroundColor: Colors.green.shade700,
+              ),
+            );
+
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ResultScreen(
+                  detectedUndertone: detectedTone,
+                  imagePath: savedImagePath,
+                ),
+              ),
+            );
+          }
+          return;
+        } else {
+          throw Exception(jsonRes['error'] ?? 'Gagal menganalisis wajah');
         }
-      } catch (dbErr) {
-        debugPrint('Notice simpan riwayat lokal: $dbErr');
-      }
-
-      if (mounted) {
-        setState(() => _isAnalyzing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✨ Hasil VLM: ${predClass.toUpperCase()} (${timeMs}ms)'),
-            backgroundColor: Colors.green.shade700,
-          ),
-        );
-
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ResultScreen(
-              detectedUndertone: predClass,
-              imagePath: savedServerImagePath,
-            ),
-          ),
-        );
+      } else {
+        throw Exception('Server merespons dengan status: ${res.statusCode}');
       }
     } catch (e) {
       if (mounted) {
@@ -179,7 +157,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Indikator Status Server VLM (/health)
                     GestureDetector(
                       onTap: _checkVlmHealth,
                       child: Container(
@@ -208,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             Text(
                               _isCheckingHealth
                                   ? 'Mengecek Server VLM AI...'
-                                  : (_isModelReady ? 'VLM AI Model Ready' : 'VLM Server Offline (Ketuk Refresh)'),
+                                  : (_isModelReady ? 'VLM AI + Auto Face-Crop Ready' : 'VLM Server Offline (Ketuk Refresh)'),
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -252,7 +229,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 10),
                     const Text(
-                      'Gunakan pemindai wajah pintar dengan sensor cahaya atau pilih foto dari galeri untuk dianalisis oleh VLM AI.',
+                      'Sistem otomatis melakukan pemotongan fokus wajah (Auto Face-Crop) & kalibrasi warna kulit bersama VLM AI agar deteksi Warm, Cool, dan Neutral lebih akurat.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Color(0xFF7A5C61),
@@ -279,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 CircularProgressIndicator(color: Color(0xFFE91E63)),
                                 SizedBox(height: 18),
                                 Text(
-                                  'VLM AI sedang menganalisis rona kulit wajahmu...',
+                                  'Memotong fokus wajah & menganalisis rona kulit bersama VLM AI...',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,

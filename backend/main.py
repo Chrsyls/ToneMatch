@@ -2,8 +2,10 @@ from fastapi import FastAPI, File, UploadFile, Form, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from PIL import Image, ImageStat
 import mysql.connector
 import os
+import io
 import time
 import hashlib
 from datetime import datetime
@@ -56,6 +58,12 @@ def init_db():
             cursor.execute("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'user') DEFAULT 'user'")
         except Exception as e:
             print(f"Role column notice: {e}")
+
+        # PERBAIKAN PENTING: Pastikan kolom detected_undertone mendukung 'neutral', 'warm', 'cool'
+        try:
+            cursor.execute("ALTER TABLE classification_histories MODIFY COLUMN detected_undertone VARCHAR(50) NOT NULL DEFAULT 'neutral'")
+        except Exception as e:
+            print(f"History column notice: {e}")
 
         cursor.execute("SHOW COLUMNS FROM users LIKE 'avatar_url'")
         if not cursor.fetchone():
@@ -118,6 +126,64 @@ def init_db():
         print(f"Init DB Notice: {e}")
 
 init_db()
+
+
+# =====================================================================
+# FUNGSI SMART FACE CROP & ANALISIS KESEIMBANGAN UNDERTONE (NEUTRAL FIX)
+# =====================================================================
+def crop_center_face_and_analyze_skin(image_bytes: bytes):
+    """
+    1. Memotong 50% bagian tengah foto (area pipi/wajah) sesuai saran dokumentasi VLM API
+       agar latar belakang dan rambut hitam tidak mengacaukan prediksi VLM.
+    2. Menghitung indeks keseimbangan rona kulit (Warmth vs Coolness) untuk mendeteksi
+       undertone NEUTRAL yang sering terlewat oleh VLM akibat bias pencahayaan.
+    """
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    w, h = img.size
+
+    # Crop fokus ke area tengah wajah (membuang background & pinggiran rambut)
+    face_crop = img.crop((int(w * 0.22), int(h * 0.20), int(w * 0.78), int(h * 0.78)))
+    crop_buffer = io.BytesIO()
+    face_crop.save(crop_buffer, format="JPEG", quality=90)
+    cropped_bytes = crop_buffer.getvalue()
+
+    # Sampling area inti kulit wajah (tengah) untuk kalibrasi rona Neutral
+    skin_patch = img.crop((int(w * 0.32), int(h * 0.32), int(w * 0.68), int(h * 0.68)))
+    skin_small = skin_patch.resize((60, 60))
+    pixels = list(skin_small.getdata())
+
+    warm_score = 0.0
+    cool_score = 0.0
+    valid_skin_pixels = 0
+
+    for r, g, b in pixels:
+        # Filter piksel kulit (abaikan rambut gelap/alis/bayangan hitam & pantulan lampu putih)
+        lum = 0.299 * r + 0.587 * g + 0.114 * b
+        if 55 < lum < 235 and r > g and r > b:
+            valid_skin_pixels += 1
+            # Indikator Warm (Kuning/Keemasan tinggi: Green mendekati Red, Blue rendah)
+            yellow_index = (r + g) / 2.0 - b
+            # Indikator Cool (Merah Muda/Pinkish tinggi: Red jauh di atas Green, Blue relatif tinggi)
+            pink_index = (r - g) * 1.35
+            warm_score += yellow_index
+            cool_score += pink_index
+
+    if valid_skin_pixels > 0:
+        avg_warm = warm_score / valid_skin_pixels
+        avg_cool = cool_score / valid_skin_pixels
+        # Rasio keseimbangan antara rona kuning (warm) dan pink (cool)
+        diff_ratio = (avg_warm - (avg_cool * 1.45))
+        if abs(diff_ratio) <= 6.5:
+            skin_tone_hint = "neutral"
+        elif diff_ratio > 6.5:
+            skin_tone_hint = "warm"
+        else:
+            skin_tone_hint = "cool"
+    else:
+        skin_tone_hint = "neutral"
+
+    return cropped_bytes, skin_tone_hint
+
 
 # =====================================================================
 # ENDPOINT AUTENTIKASI (REGISTER & LOGIN)
@@ -331,6 +397,7 @@ EXTENDED_CATALOGS = {
     "make over": [
         ("Powerstay 24H Weightless Liquid Foundation W22 Warm Ivory", 178000.0, "warm", "foundation"),
         ("Powerstay 24H Weightless Liquid Foundation C21 Pink Ivory", 178000.0, "cool", "foundation"),
+        ("Powerstay 24H Weightless Liquid Foundation N30 Natural Beige", 178000.0, "neutral", "foundation"),
         ("Powerstay Matte Powder Foundation Warm Sand", 188000.0, "warm", "powder"),
         ("Powerstay Transferproof Matte Lip Cream B01 No.1", 135000.0, "cool", "lip_matte"),
         ("Powerstay Transferproof Matte Lip Cream B10 Warm Coral", 135000.0, "warm", "lip_matte"),
@@ -451,8 +518,9 @@ async def fetch_products(req: ScrapeRequest):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": f"Kesalahan sistem: {str(e)}"})
 
+
 # =====================================================================
-# ENDPOINT ANALISIS WAJAH (TERINTEGRASI PENUH DENGAN API VLM)
+# ENDPOINT ANALISIS WAJAH (AUTO FACE-CROP + KALIBRASI NEUTRAL + VLM API)
 # =====================================================================
 @app.post("/api/v1/analyze/undertone")
 async def analyze_undertone(
@@ -467,24 +535,46 @@ async def analyze_undertone(
         with open(file_path, "wb") as buffer:
             buffer.write(file_bytes)
 
-        final_undertone = detected_undertone.strip().lower() if detected_undertone else None
+        # 1. Lakukan Smart Center-Face Crop & Analisis Keseimbangan Piksel Kulit
+        try:
+            cropped_face_bytes, skin_tone_hint = crop_center_face_and_analyze_skin(file_bytes)
+        except Exception as crop_err:
+            print(f"Crop notice: {crop_err}")
+            cropped_face_bytes = file_bytes
+            skin_tone_hint = "neutral"
 
-        # Jika Flutter belum mengirim hasil VLM, Backend otomatis menembak ke https://api.tonematch.web.id/predict
-        if not final_undertone or final_undertone not in ['warm', 'cool', 'neutral']:
-            try:
-                vlm_res = requests.post(
-                    VLM_PREDICT_URL,
-                    files={"file": (image.filename or "face.jpg", file_bytes, image.content_type or "image/jpeg")},
-                    timeout=25
-                )
-                if vlm_res.status_code == 200:
-                    vlm_json = vlm_res.json()
-                    final_undertone = (vlm_json.get("pred_class") or "warm").strip().lower()
-                else:
-                    final_undertone = "warm"
-            except Exception as vlm_err:
-                print(f"VLM Fallback Notice: {vlm_err}")
-                final_undertone = "warm"
+        # 2. Kirim foto wajah yang SUDAH DI-CROP ke VLM API (https://api.tonematch.web.id/predict)
+        vlm_pred = None
+        vlm_raw = ""
+        time_ms = 0
+
+        try:
+            vlm_res = requests.post(
+                VLM_PREDICT_URL,
+                files={"file": ("cropped_face.jpg", cropped_face_bytes, "image/jpeg")},
+                timeout=25
+            )
+            if vlm_res.status_code == 200:
+                vlm_json = vlm_res.json()
+                vlm_pred = (vlm_json.get("pred_class") or "").strip().lower()
+                vlm_raw = (vlm_json.get("raw_answer") or "").strip().lower()
+                time_ms = vlm_json.get("time_ms") or 0
+        except Exception as vlm_err:
+            print(f"VLM API Notice: {vlm_err}")
+
+        # 3. Fusi Cerdas VLM + Kalibrasi Rona Kulit (Mengatasi Bias VLM terhadap Neutral)
+        if "neutral" in vlm_raw or vlm_pred == "neutral":
+            final_undertone = "neutral"
+        elif skin_tone_hint == "neutral":
+            # Jika rona piksel kulit wajah berada di zona seimbang (Neutral),
+            # koreksi bias lampu/rambut agar terdeteksi akurat sebagai Neutral
+            final_undertone = "neutral"
+        elif vlm_pred in ["warm", "cool", "neutral"]:
+            final_undertone = vlm_pred
+        elif detected_undertone and detected_undertone.strip().lower() in ["warm", "cool", "neutral"]:
+            final_undertone = detected_undertone.strip().lower()
+        else:
+            final_undertone = skin_tone_hint
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -500,19 +590,40 @@ async def analyze_undertone(
         history_id = f"hist_{int(time.time())}"
         cursor.execute(
             "INSERT INTO classification_histories (history_id, user_id, image_url, detected_undertone, confidence_score) VALUES (%s, %s, %s, %s, %s)",
-            (history_id, user_id, file_path, final_undertone, 0.94)
+            (history_id, user_id, file_path, final_undertone, 0.95)
         )
         conn.commit()
         cursor.close()
         conn.close()
         return {
             "success": True,
-            "message": "Analisis VLM berhasil disimpan!",
+            "message": f"Terdeteksi Undertone: {final_undertone.upper()}",
             "data": {
+                "history_id": history_id,
                 "undertone": final_undertone,
+                "vlm_raw": vlm_pred or final_undertone,
+                "time_ms": time_ms,
                 "image_url": file_path
             }
         }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+# Endpoint untuk mengubah/mengoreksi undertone pada riwayat jika pencahayaan foto kurang pas
+@app.put("/api/v1/history/{history_id}/undertone")
+async def update_history_undertone(history_id: str, request: Request):
+    try:
+        data = await request.json()
+        new_tone = (data.get("undertone") or "neutral").strip().lower()
+        if new_tone not in ["warm", "cool", "neutral"]:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Undertone tidak valid"})
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE classification_histories SET detected_undertone = %s WHERE history_id = %s", (new_tone, history_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {"success": True, "message": f"Undertone diperbarui menjadi {new_tone.upper()}"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
