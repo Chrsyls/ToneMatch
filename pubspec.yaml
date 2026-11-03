@@ -41,6 +41,9 @@ dependencies:
   camera: ^0.12.1
   url_launcher: ^6.3.3
   shared_preferences: ^2.5.6
+  webview_flutter: ^4.14.1
+  webview_flutter_android: ^4.14.1
+  permission_handler: ^13.0.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

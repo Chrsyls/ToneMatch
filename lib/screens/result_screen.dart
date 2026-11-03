@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/dynamic_background.dart';
+import 'virtual_try_on_screen.dart';
 
 class ResultScreen extends StatefulWidget {
   final String detectedUndertone;
@@ -30,7 +31,7 @@ class _ResultScreenState extends State<ResultScreen> {
   final String baseUrl = 'http://10.4.89.111:8000';
 
   final TextEditingController _searchController = TextEditingController();
-  String _selectedCategory = 'all'; // 'all', 'lip', 'base', 'powder', 'blush_eye'
+  String _selectedCategory = 'all';
 
   @override
   void initState() {
@@ -55,10 +56,9 @@ class _ResultScreenState extends State<ResultScreen> {
     setState(() => _isLoading = true);
     try {
       final targetTone = widget.detectedUndertone.toLowerCase();
-      // Mengambil rekomendasi sesuai undertone terdeteksi (Warm, Cool, atau Neutral)
       final uri = Uri.parse('$baseUrl/api/v1/recommendations/$targetTone?user_id=$_currentUid');
       final response = await http.get(uri);
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true) {
@@ -80,7 +80,6 @@ class _ResultScreenState extends State<ResultScreen> {
     }
   }
 
-  // Deteksi kategori jenis produk
   String _detectCategory(String productName) {
     final lower = productName.toLowerCase();
     if (lower.contains('lip') || lower.contains('tint') || lower.contains('matte') || lower.contains('gloss') || lower.contains('cream') || lower.contains('rouge')) {
@@ -96,6 +95,44 @@ class _ResultScreenState extends State<ResultScreen> {
       return 'blush_eye';
     }
     return 'base';
+  }
+
+  Map<String, String> _mapProductToSdkConfig(String productName) {
+    final lower = productName.toLowerCase();
+    final tone = widget.detectedUndertone.toLowerCase();
+
+    if (lower.contains('blush') || lower.contains('cheek')) {
+      return {
+        'category': 'blush',
+        'color': tone == 'cool' ? '#C85A7C' : (tone == 'warm' ? '#E05A47' : '#C05C67'),
+      };
+    }
+    if (lower.contains('eyeshadow') || lower.contains('palette')) {
+      return {
+        'category': 'eyeshadow',
+        'color': tone == 'cool' ? '#8E44AD' : (tone == 'warm' ? '#B55239' : '#A84A5C'),
+      };
+    }
+    if (lower.contains('liner') || lower.contains('brow')) {
+      return {'category': 'eyeliner', 'color': '#141414'};
+    }
+    if (lower.contains('mascara') || lower.contains('lash')) {
+      return {'category': 'mascara', 'color': '#141414'};
+    }
+    if (lower.contains('cushion') || lower.contains('foundation') || lower.contains('powder') || lower.contains('concealer')) {
+      return {
+        'category': 'foundation',
+        'color': tone == 'cool' ? '#ECC4B2' : (tone == 'warm' ? '#E5B88B' : '#E2B89A'),
+      };
+    }
+
+    String lipHex = tone == 'cool' ? '#B4002E' : (tone == 'warm' ? '#B83B2A' : '#B56B60');
+    if (lower.contains('peach') || lower.contains('orange') || lower.contains('coral')) lipHex = '#E05A47';
+    if (lower.contains('berry') || lower.contains('ruby') || lower.contains('plum')) lipHex = '#7A1C4B';
+    if (lower.contains('pink') || lower.contains('mauve') || lower.contains('rose')) lipHex = '#C85A7C';
+    if (lower.contains('brown') || lower.contains('choco') || lower.contains('nude')) lipHex = '#8D4E3F';
+
+    return {'category': 'lipstick', 'color': lipHex};
   }
 
   void _filterProducts() {
@@ -122,7 +159,7 @@ class _ResultScreenState extends State<ResultScreen> {
             SnackBar(content: Text(isCurrentlySaved ? 'Produk dihapus dari tersimpan' : 'Produk berhasil disimpan! ❤️')),
           );
         }
-        _fetchRecommendations(); 
+        _fetchRecommendations();
       }
     } catch (e) {
       if (mounted) {
@@ -149,7 +186,6 @@ class _ResultScreenState extends State<ResultScreen> {
     return currencyFormatter.format(parsedPrice);
   }
 
-  // Panduan Palet Warna (Warm, Cool, dan Neutral)
   Map<String, dynamic> _getColorPaletteGuide() {
     final tone = widget.detectedUndertone.toLowerCase();
     if (tone == 'warm') {
@@ -179,7 +215,6 @@ class _ResultScreenState extends State<ResultScreen> {
         'avoid': 'Oranye Terang dan Kuning Mustard.',
       };
     } else {
-      // Netral / Neutral
       return {
         'jewelry': 'Rose Gold, Emas Muda & Perak (Bebas)',
         'jewelryIcon': Icons.diamond_outlined,
@@ -203,7 +238,7 @@ class _ResultScreenState extends State<ResultScreen> {
 
     void calculateBundle(StateSetter setModalState) {
       final double maxBudget = double.tryParse(budgetCtrl.text.replaceAll('.', '').replaceAll(',', '')) ?? 250000;
-      
+
       final sorted = List<dynamic>.from(_recommendations)
         ..sort((a, b) => (double.tryParse(a['price'].toString()) ?? 0).compareTo(double.tryParse(b['price'].toString()) ?? 0));
 
@@ -480,6 +515,7 @@ class _ResultScreenState extends State<ResultScreen> {
     final brand = prod['brand'] ?? 'Brand Kosmetik';
     final price = _formatRupiah(prod['price'] ?? 0);
     final undertone = (prod['undertone'] ?? widget.detectedUndertone).toUpperCase();
+    final sdkConfig = _mapProductToSdkConfig(productName);
 
     showModalBottomSheet(
       context: context,
@@ -517,6 +553,31 @@ class _ResultScreenState extends State<ResultScreen> {
                 ],
               ),
               const SizedBox(height: 16),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4A2333),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => VirtualTryOnScreen(
+                        undertone: widget.detectedUndertone,
+                        initialCategory: sdkConfig['category'],
+                        initialColorHex: sdkConfig['color'],
+                        initialProductName: productName,
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.face_retouching_natural, color: Color(0xFFFFC107)),
+                label: const Text('Coba AR Virtual Try-On Sekarang 💄', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
@@ -538,7 +599,7 @@ class _ResultScreenState extends State<ResultScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63), minimumSize: const Size(double.infinity, 50)),
                 onPressed: () {
@@ -559,7 +620,9 @@ class _ResultScreenState extends State<ResultScreen> {
     String undertoneTitle = widget.detectedUndertone.toUpperCase();
     final userPhotoUrl = widget.imagePath != null ? '$baseUrl/${widget.imagePath}' : null;
     final paletteGuide = _getColorPaletteGuide();
-    final List<Map<String, dynamic>> bestColors = List<Map<String, dynamic>>.from(paletteGuide['bestColors']);
+
+    // Menggunakan List<dynamic> tunggal agar tidak pernah dipotong oleh filter HTML chat
+    final List<dynamic> bestColors = List<dynamic>.from(paletteGuide['bestColors']);
 
     return Scaffold(
       body: Stack(
@@ -597,7 +660,6 @@ class _ResultScreenState extends State<ResultScreen> {
                   child: ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     children: [
-                      // 1. KARTU PROFIL UNDERTONE
                       ClipRRect(
                         borderRadius: BorderRadius.circular(24),
                         child: BackdropFilter(
@@ -629,7 +691,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                 Text(undertoneTitle, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
                                 const SizedBox(height: 10),
                                 Text(
-                                  'Kulit Anda memiliki rona $undertoneTitle. Gunakan panduan palet warna dan produk di bawah ini agar wajah tampak lebih cerah.',
+                                  'Kulit Anda memiliki rona $undertoneTitle. Gunakan panduan palet warna dan cermin AR di bawah ini untuk mencoba makeup secara real-time.',
                                   textAlign: TextAlign.center,
                                   style: const TextStyle(color: Color(0xFF7A5C61), fontSize: 13, height: 1.4),
                                 ),
@@ -638,9 +700,34 @@ class _ResultScreenState extends State<ResultScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 16),
 
-                      // 2. PANDUAN PERSONAL COLOR & GAYA
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE91E63),
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(double.infinity, 54),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 4,
+                        ),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => VirtualTryOnScreen(
+                                undertone: widget.detectedUndertone,
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.camera_enhance_rounded, color: Colors.white),
+                        label: const Text(
+                          'Coba Virtual Try-On',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
                       Container(
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
@@ -676,7 +763,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                       ),
                                     ),
                                     const SizedBox(height: 6),
-                                    Text(swatch['name'], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF4A2333))),
+                                    Text(swatch['name'].toString(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF4A2333))),
                                   ],
                                 );
                               }).toList(),
@@ -711,9 +798,8 @@ class _ResultScreenState extends State<ResultScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
 
-                      // 3. TOMBOL KALKULATOR PAKET MAKEUP
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF4A2333),
@@ -729,7 +815,7 @@ class _ResultScreenState extends State<ResultScreen> {
                       const SizedBox(height: 24),
                       const Text('Rekomendasi Produk Makeup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
                       const SizedBox(height: 12),
-                      
+
                       TextField(
                         controller: _searchController,
                         decoration: InputDecoration(
@@ -785,6 +871,8 @@ class _ResultScreenState extends State<ResultScreen> {
                                     final prod = _filteredRecommendations[index];
                                     final isSaved = prod['is_saved'] ?? false;
                                     final imageUrl = prod['image_url'];
+                                    final prodName = (prod['product_name'] ?? 'Makeup Item').toString();
+                                    final sdkConf = _mapProductToSdkConfig(prodName);
 
                                     return Container(
                                       margin: const EdgeInsets.only(bottom: 12),
@@ -806,11 +894,33 @@ class _ResultScreenState extends State<ResultScreen> {
                                                   child: const Icon(Icons.brush, color: Color(0xFFE91E63)),
                                                 ),
                                         ),
-                                        title: Text(prod['product_name'] ?? 'Makeup Item', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
+                                        title: Text(prodName, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
                                         subtitle: Text('${prod['brand']} • ${_formatRupiah(prod['price'] ?? 0)}', style: const TextStyle(color: Color(0xFF7A5C61), fontSize: 13)),
-                                        trailing: IconButton(
-                                          icon: Icon(isSaved ? Icons.favorite : Icons.favorite_border, color: const Color(0xFFE91E63)),
-                                          onPressed: () => _toggleSaveProduct(prod['product_id'].toString(), isSaved),
+                                        trailing: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            IconButton(
+                                              tooltip: 'Virtual Try-On Produk Ini',
+                                              icon: const Icon(Icons.face_retouching_natural, color: Color(0xFF4A2333)),
+                                              onPressed: () {
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (context) => VirtualTryOnScreen(
+                                                      undertone: widget.detectedUndertone,
+                                                      initialCategory: sdkConf['category'],
+                                                      initialColorHex: sdkConf['color'],
+                                                      initialProductName: prodName,
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                            IconButton(
+                                              icon: Icon(isSaved ? Icons.favorite : Icons.favorite_border, color: const Color(0xFFE91E63)),
+                                              onPressed: () => _toggleSaveProduct(prod['product_id'].toString(), isSaved),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     );
