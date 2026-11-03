@@ -43,7 +43,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
     }
   }
 
-  // MODAL PENARIKAN KATALOG OTOMATIS (DISEMPURNAKAN: TANPA DROPDOWN UNDERTONE)
+  // MODAL PENARIKAN KATALOG OTOMATIS
   Future<void> _showScrapeDialog() async {
     final TextEditingController brandController = TextEditingController();
     bool isScraping = false;
@@ -100,7 +100,6 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
 
                     setStateDialog(() => isScraping = true);
                     try {
-                      // Mengirim request ke backend tanpa parameter undertone manual
                       final response = await http.post(
                         Uri.parse('$baseUrl/api/v1/admin/products/scrape'),
                         headers: {'Content-Type': 'application/json'},
@@ -257,12 +256,20 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                 Padding(
                   padding: const EdgeInsets.all(24.0),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      // TOMBOL KELUAR / KEMBALI TANPA LINGKARAN LATAR BELAKANG
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Color(0xFF4A2333), size: 26),
+                        tooltip: 'Keluar',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      const SizedBox(width: 14),
                       const Expanded(
                         child: Text(
                           'Manajemen Produk', 
-                          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFF4A2333)),
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF4A2333)),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -276,6 +283,7 @@ class _AdminProductScreenState extends State<AdminProductScreen> {
                           ),
                           IconButton(
                             icon: const Icon(Icons.add_circle, color: Color(0xFFE91E63), size: 32),
+                            tooltip: 'Tambah Produk',
                             onPressed: () => _showAddEditModal(),
                           ),
                         ],

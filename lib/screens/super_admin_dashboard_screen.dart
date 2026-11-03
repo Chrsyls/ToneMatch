@@ -19,10 +19,16 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
   String _currentUid = '';
   final String baseUrl = 'http://10.4.89.111:8000';
 
+  // Variabel untuk Status VLM Server
+  bool _isCheckingHealth = true;
+  bool _isModelReady = false;
+  final String vlmBaseUrl = 'https://api.tonematch.web.id';
+
   @override
   void initState() {
     super.initState();
     _loadDashboardData();
+    _checkVlmHealth();
   }
 
   Future<void> _loadDashboardData() async {
@@ -54,6 +60,35 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
     }
   }
 
+  // Cek status kesehatan API VLM (GET /health)
+  Future<void> _checkVlmHealth() async {
+    setState(() => _isCheckingHealth = true);
+    try {
+      final response = await http
+          .get(Uri.parse('$vlmBaseUrl/health'))
+          .timeout(const Duration(seconds: 6));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _isModelReady = (data['status'] == 'ok' && data['model_ready'] == true);
+            _isCheckingHealth = false;
+          });
+        }
+        return;
+      }
+    } catch (e) {
+      debugPrint('VLM Health Check Error: $e');
+    }
+    if (mounted) {
+      setState(() {
+        _isModelReady = false;
+        _isCheckingHealth = false;
+      });
+    }
+  }
+
   Future<void> _updateUserRole(String targetUid, String newRole) async {
     try {
       final res = await http.put(
@@ -76,7 +111,6 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
     }
   }
 
-  // FITUR HAPUS AKUN PENGGUNA OLEH SUPER ADMIN
   Future<void> _confirmDeleteUser(Map<String, dynamic> user) async {
     final targetUid = user['uid'].toString();
     final targetName = user['name'] ?? 'Pengguna';
@@ -142,7 +176,10 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, color: Color(0xFF4A2333)),
-            onPressed: _loadDashboardData,
+            onPressed: () {
+              _loadDashboardData();
+              _checkVlmHealth();
+            },
           ),
         ],
       ),
@@ -155,6 +192,48 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
                 : ListView(
                     padding: const EdgeInsets.all(24),
                     children: [
+                      // INDIKATOR STATUS VLM SERVER (Dipindah ke Super Admin)
+                      GestureDetector(
+                        onTap: _checkVlmHealth,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: _isCheckingHealth
+                                  ? Colors.orange
+                                  : (_isModelReady ? Colors.green : Colors.redAccent),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.circle,
+                                size: 12,
+                                color: _isCheckingHealth
+                                    ? Colors.orange
+                                    : (_isModelReady ? Colors.green : Colors.redAccent),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _isCheckingHealth
+                                    ? 'Mengecek Server VLM AI...'
+                                    : (_isModelReady ? 'VLM AI Model Ready (Online)' : 'VLM Server Offline (Ketuk Refresh)'),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF4A2333),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
                       // Kartu Statistik Sistem
                       Row(
                         children: [

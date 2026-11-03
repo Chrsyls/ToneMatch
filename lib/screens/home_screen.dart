@@ -18,46 +18,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _isAnalyzing = false;
-  bool _isCheckingHealth = true;
-  bool _isModelReady = false;
 
   final String vlmBaseUrl = 'https://api.tonematch.web.id';
   final String localBaseUrl = 'http://10.4.89.111:8000'; // Sesuaikan IP VPS Anda
-
-  @override
-  void initState() {
-    super.initState();
-    _checkVlmHealth();
-  }
-
-  // Cek status kesehatan API VLM (GET /health)
-  Future<void> _checkVlmHealth() async {
-    setState(() => _isCheckingHealth = true);
-    try {
-      final response = await http
-          .get(Uri.parse('$vlmBaseUrl/health'))
-          .timeout(const Duration(seconds: 6));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (mounted) {
-          setState(() {
-            _isModelReady = (data['status'] == 'ok' && data['model_ready'] == true);
-            _isCheckingHealth = false;
-          });
-        }
-        return;
-      }
-    } catch (e) {
-      debugPrint('VLM Health Check Error: $e');
-    }
-    if (mounted) {
-      setState(() {
-        _isModelReady = false;
-        _isCheckingHealth = false;
-      });
-    }
-  }
 
   Future<void> _openSmartCamera() async {
     final File? capturedFile = await Navigator.push<File>(
@@ -177,47 +140,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    GestureDetector(
-                      onTap: _checkVlmHealth,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.75),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: _isCheckingHealth
-                                ? Colors.orange
-                                : (_isModelReady ? Colors.green : Colors.redAccent),
-                            width: 1.2,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.circle,
-                              size: 10,
-                              color: _isCheckingHealth
-                                  ? Colors.orange
-                                  : (_isModelReady ? Colors.green : Colors.redAccent),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _isCheckingHealth
-                                  ? 'Mengecek Server VLM AI...'
-                                  : (_isModelReady ? 'VLM AI Model Ready' : 'VLM Server Offline (Ketuk Refresh)'),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF4A2333),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 28),
-
                     Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
@@ -239,7 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      'Analisis Undertone Kulit',
+                      'Analisis Undertone',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w900,
@@ -249,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 10),
                     const Text(
-                      'Pindai wajahmu dengan kamera pintar atau pilih foto dari galeri untuk diklasifikasikan secara langsung oleh VLM AI.',
+                      'Pindai wajahmu dengan kamera atau pilih foto dari galeri untuk diklasifikasikan secara langsung.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Color(0xFF7A5C61),
@@ -307,11 +229,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         onPressed: _openSmartCamera,
                         icon: const Icon(Icons.camera_front_rounded),
                         label: const Text(
-                          'Pindai Wajah (Kamera Pintar)',
+                          'Pindai Wajah',
                           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                       ),
-                      const SizedOverflowBox(size: Size.zero),
                       const SizedBox(height: 16),
                       OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(

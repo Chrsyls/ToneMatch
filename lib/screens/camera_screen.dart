@@ -21,11 +21,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
 
   bool _isReady = false;
   bool _hasFace = false;
-  bool _isFlashOn = false;
   String _statusText = 'Menganalisis area wajah...';
-
-  double _minAvailableExposure = 0.0;
-  double _maxAvailableExposure = 0.0;
 
   late AnimationController _scanController;
 
@@ -65,14 +61,6 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
 
         await _controller!.initialize();
 
-        try {
-          _minAvailableExposure = await _controller!.getMinExposureOffset();
-          _maxAvailableExposure = await _controller!.getMaxExposureOffset();
-          await _controller!.setExposureOffset(_maxAvailableExposure);
-        } catch (e) {
-          debugPrint("Exposure offset error: $e");
-        }
-
         if (mounted) {
           setState(() => _isCameraInitialized = true);
         }
@@ -81,7 +69,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
         await _controller!.startImageStream((CameraImage image) {
           if (_isProcessing || _isTakingPicture) return;
           frameCount++;
-          if (frameCount % 6 != 0) return; // Cek lebih responsif
+          if (frameCount % 6 != 0) return;
 
           _isProcessing = true;
           _checkLightingAndFace(image);
@@ -99,43 +87,29 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
     await _initCamera(cameraIndex: nextIdx);
   }
 
-  Future<void> _optimizeLighting(double avgLuminance) async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
-    try {
-      if (avgLuminance < 40 && !_isFlashOn) {
-        await _controller!.setFlashMode(FlashMode.torch);
-        if (mounted) setState(() => _isFlashOn = true);
-      } else if (avgLuminance >= 55 && _isFlashOn) {
-        await _controller!.setFlashMode(FlashMode.off);
-        if (mounted) setState(() => _isFlashOn = false);
-      }
-    } catch (_) {}
-  }
-
-  // Algoritma Deteksi Wajah Diperketat (Mencegah objek latar belakang terdeteksi wajah)
+  // Logika Pengecekan Diperbaiki: Validasi Cahaya Didahulukan Sebelum Deteksi Wajah
   void _checkLightingAndFace(CameraImage image) {
     try {
       final yBytes = image.planes[0].bytes;
       int width = image.width;
       int height = image.height;
 
-      // Hitung rata-rata pencahayaan keseluruhan
       int yTotal = 0;
       for (int i = 0; i < yBytes.length; i += 20) {
         yTotal += yBytes[i];
       }
       double avgLuminance = yTotal / (yBytes.length / 20);
 
-      _optimizeLighting(avgLuminance);
-      bool isLightingGood = avgLuminance > 30 && avgLuminance < 235;
+      // 1. PRIORITAS UTAMA: Cek apakah pencahayaan terlalu gelap atau terlalu silau
+      bool isLightingGood = avgLuminance > 35 && avgLuminance < 220;
 
       bool isFaceDetected = false;
 
-      if (image.planes.length >= 3) {
+      // 2. Hanya jalankan deteksi wajah jika pencahayaan sudah memadai
+      if (isLightingGood && image.planes.length >= 3) {
         final uBytes = image.planes[1].bytes;
         final vBytes = image.planes[2].bytes;
 
-        // FOKUS PEMINDAIAN: Hanya ambil sampel di area tengah (Area oval wajah)
         int centerYStart = (height * 0.25).toInt();
         int centerYEnd = (height * 0.75).toInt();
         int centerXStart = (width * 0.30).toInt();
@@ -152,7 +126,6 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
               int u = uBytes[index];
               int v = vBytes[index];
 
-              // Rentang warna kulit manusia yang akurat pada ruang warna YUV (mencegah dinding/benda cokelat lolos)
               if (v >= 133 && v <= 173 && u >= 80 && u <= 125 && (v - u >= 8)) {
                 skinPixelCount++;
               }
@@ -163,18 +136,18 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
 
         if (totalSampledPixels > 0) {
           double skinPercentage = (skinPixelCount / totalSampledPixels) * 100;
-          // Syarat ketat: Minimal 32% area tengah harus berupa piksel kulit manusia asli
-          isFaceDetected = skinPercentage > 32.0 && avgLuminance > 25.0;
+          isFaceDetected = skinPercentage > 30.0;
         }
       }
 
+      // 3. Susun Pesan Status Peringatan yang Akurat
       String status = '';
-      if (!isFaceDetected) {
-        status = avgLuminance < 30
-            ? 'Ruangan terlalu gelap. Posisikan wajah di dalam oval.'
-            : 'Wajah tidak terdeteksi. Posisikan wajah tepat di dalam bingkai oval.';
-      } else if (!isLightingGood) {
-        status = avgLuminance <= 25 ? 'Terlalu gelap untuk analisis.' : 'Cahaya terlalu silau.';
+      if (!isLightingGood) {
+        status = avgLuminance <= 35 
+            ? 'Terlalu Gelap, cari tempat lebih terang.' 
+            : 'Terlalu Terang, kurangi cahaya/hindari backlight.';
+      } else if (!isFaceDetected) {
+        status = 'Wajah tidak terdeteksi. Posisikan wajah tepat di dalam bingkai oval.';
       } else {
         status = 'Kondisi Wajah & Cahaya Optimal! Silakan ambil foto.';
       }
@@ -197,9 +170,6 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
   @override
   void dispose() {
     _scanController.dispose();
-    try {
-      _controller?.setFlashMode(FlashMode.off);
-    } catch (_) {}
     _controller?.dispose();
     super.dispose();
   }
@@ -208,7 +178,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
     if (!_isReady || !_hasFace) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Wajah belum terdeteksi di dalam bingkai oval!'),
+          content: Text('Pastikan pencahayaan cukup dan wajah berada di dalam bingkai oval!'),
           duration: Duration(milliseconds: 1500),
           backgroundColor: Colors.orangeAccent,
         ),
@@ -225,9 +195,6 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
       if (_controller!.value.isStreamingImages) {
         await _controller!.stopImageStream();
       }
-      try {
-        await _controller!.setFlashMode(FlashMode.off);
-      } catch (_) {}
 
       final XFile picture = await _controller!.takePicture();
       if (mounted) {
