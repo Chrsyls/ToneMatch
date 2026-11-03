@@ -21,7 +21,11 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
 
   bool _isReady = false;
   bool _hasFace = false;
+  bool _isFlashOn = false;
   String _statusText = 'Menganalisis area wajah...';
+
+  double _minAvailableExposure = 0.0;
+  double _maxAvailableExposure = 0.0;
 
   late AnimationController _scanController;
 
@@ -61,6 +65,14 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
 
         await _controller!.initialize();
 
+        try {
+          _minAvailableExposure = await _controller!.getMinExposureOffset();
+          _maxAvailableExposure = await _controller!.getMaxExposureOffset();
+          await _controller!.setExposureOffset(_maxAvailableExposure);
+        } catch (e) {
+          debugPrint("Exposure offset error: $e");
+        }
+
         if (mounted) {
           setState(() => _isCameraInitialized = true);
         }
@@ -69,7 +81,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
         await _controller!.startImageStream((CameraImage image) {
           if (_isProcessing || _isTakingPicture) return;
           frameCount++;
-          if (frameCount % 10 != 0) return;
+          if (frameCount % 6 != 0) return; // Cek lebih responsif
 
           _isProcessing = true;
           _checkLightingAndFace(image);
@@ -87,55 +99,84 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
     await _initCamera(cameraIndex: nextIdx);
   }
 
+  Future<void> _optimizeLighting(double avgLuminance) async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    try {
+      if (avgLuminance < 40 && !_isFlashOn) {
+        await _controller!.setFlashMode(FlashMode.torch);
+        if (mounted) setState(() => _isFlashOn = true);
+      } else if (avgLuminance >= 55 && _isFlashOn) {
+        await _controller!.setFlashMode(FlashMode.off);
+        if (mounted) setState(() => _isFlashOn = false);
+      }
+    } catch (_) {}
+  }
+
+  // Algoritma Deteksi Wajah Diperketat (Mencegah objek latar belakang terdeteksi wajah)
   void _checkLightingAndFace(CameraImage image) {
     try {
-      // 1. CEK PENCAHAYAAN (Luminance - Y)
       final yBytes = image.planes[0].bytes;
+      int width = image.width;
+      int height = image.height;
+
+      // Hitung rata-rata pencahayaan keseluruhan
       int yTotal = 0;
       for (int i = 0; i < yBytes.length; i += 20) {
         yTotal += yBytes[i];
       }
       double avgLuminance = yTotal / (yBytes.length / 20);
 
-      bool isLightingGood = avgLuminance > 50 && avgLuminance < 220;
+      _optimizeLighting(avgLuminance);
+      bool isLightingGood = avgLuminance > 30 && avgLuminance < 235;
 
-      // 2. CEK WAJAH KETAT (Chrominance - U & V)
       bool isFaceDetected = false;
 
       if (image.planes.length >= 3) {
         final uBytes = image.planes[1].bytes;
         final vBytes = image.planes[2].bytes;
 
-        int startIdx = (uBytes.length * 0.3).toInt();
-        int endIdx = (uBytes.length * 0.7).toInt();
+        // FOKUS PEMINDAIAN: Hanya ambil sampel di area tengah (Area oval wajah)
+        int centerYStart = (height * 0.25).toInt();
+        int centerYEnd = (height * 0.75).toInt();
+        int centerXStart = (width * 0.30).toInt();
+        int centerXEnd = (width * 0.70).toInt();
 
         int skinPixelCount = 0;
         int totalSampledPixels = 0;
+        int rowStride = image.planes[1].bytesPerRow;
 
-        for (int i = startIdx; i < endIdx; i += 5) {
-          int u = uBytes[i];
-          int v = vBytes[i];
+        for (int y = centerYStart; y < centerYEnd; y += 4) {
+          for (int x = centerXStart; x < centerXEnd; x += 4) {
+            int index = y * rowStride + x;
+            if (index < uBytes.length && index < vBytes.length) {
+              int u = uBytes[index];
+              int v = vBytes[index];
 
-          if (v >= 132 && v <= 175 && u >= 75 && u <= 130 && (v - u >= 10)) {
-            skinPixelCount++;
+              // Rentang warna kulit manusia yang akurat pada ruang warna YUV (mencegah dinding/benda cokelat lolos)
+              if (v >= 133 && v <= 173 && u >= 80 && u <= 125 && (v - u >= 8)) {
+                skinPixelCount++;
+              }
+              totalSampledPixels++;
+            }
           }
-          totalSampledPixels++;
         }
 
-        double skinPercentage = (skinPixelCount / totalSampledPixels) * 100;
-        isFaceDetected = skinPercentage > 20.0 && avgLuminance > 40.0;
+        if (totalSampledPixels > 0) {
+          double skinPercentage = (skinPixelCount / totalSampledPixels) * 100;
+          // Syarat ketat: Minimal 32% area tengah harus berupa piksel kulit manusia asli
+          isFaceDetected = skinPercentage > 32.0 && avgLuminance > 25.0;
+        }
       }
 
-      // 3. LOGIKA INSTRUKSI UI
       String status = '';
       if (!isFaceDetected) {
-        status = 'Wajah tidak terdeteksi. Posisikan ke dalam oval.';
+        status = avgLuminance < 30
+            ? 'Ruangan terlalu gelap. Posisikan wajah di dalam oval.'
+            : 'Wajah tidak terdeteksi. Posisikan wajah tepat di dalam bingkai oval.';
       } else if (!isLightingGood) {
-        status = avgLuminance <= 50
-            ? 'Terlalu Gelap, cari tempat lebih terang.'
-            : 'Terlalu Terang, kurangi cahaya/hindari backlight.';
+        status = avgLuminance <= 25 ? 'Terlalu gelap untuk analisis.' : 'Cahaya terlalu silau.';
       } else {
-        status = 'Kondisi Optimal! Silakan ambil foto untuk VLM AI.';
+        status = 'Kondisi Wajah & Cahaya Optimal! Silakan ambil foto.';
       }
 
       bool isReady = isLightingGood && isFaceDetected;
@@ -148,7 +189,6 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
         });
       }
     } catch (_) {
-      // Abaikan frame yang sedang transisi
     } finally {
       _isProcessing = false;
     }
@@ -157,11 +197,25 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
   @override
   void dispose() {
     _scanController.dispose();
+    try {
+      _controller?.setFlashMode(FlashMode.off);
+    } catch (_) {}
     _controller?.dispose();
     super.dispose();
   }
 
   Future<void> _takePicture() async {
+    if (!_isReady || !_hasFace) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Wajah belum terdeteksi di dalam bingkai oval!'),
+          duration: Duration(milliseconds: 1500),
+          backgroundColor: Colors.orangeAccent,
+        ),
+      );
+      return;
+    }
+
     if (_controller == null || !_controller!.value.isInitialized) return;
     if (_controller!.value.isTakingPicture || _isTakingPicture) return;
 
@@ -171,10 +225,12 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
       if (_controller!.value.isStreamingImages) {
         await _controller!.stopImageStream();
       }
+      try {
+        await _controller!.setFlashMode(FlashMode.off);
+      } catch (_) {}
 
       final XFile picture = await _controller!.takePicture();
       if (mounted) {
-        // Kembalikan File foto ke HomeScreen untuk dikirim ke API VLM
         Navigator.pop(context, File(picture.path));
       }
     } catch (e) {
@@ -213,21 +269,16 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Tampilan Kamera (Scaled Anti Distorsi)
           Transform.scale(
             scale: scale,
             child: Center(
               child: CameraPreview(_controller!),
             ),
           ),
-
-          // 2. Overlay Oval
           CustomPaint(
             painter: FaceOverlayPainter(isReady: _isReady),
             size: Size(size.width, size.height),
           ),
-
-          // 3. Animasi Scanner
           if (_isReady)
             AnimatedBuilder(
               animation: _scanController,
@@ -253,8 +304,6 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
                 );
               },
             ),
-
-          // 4. Panel Instruksi Pencahayaan & Wajah
           Positioned(
             top: MediaQuery.of(context).padding.top + 20,
             left: 24,
@@ -266,10 +315,10 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.55),
+                    color: Colors.black.withOpacity(0.65),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: _isReady ? Colors.greenAccent.withOpacity(0.5) : Colors.white24,
+                      color: _isReady ? Colors.greenAccent.withOpacity(0.5) : Colors.orangeAccent.withOpacity(0.5),
                       width: 1.5,
                     ),
                   ),
@@ -280,14 +329,12 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
                         children: [
                           Icon(
                             _getSensorIcon(),
-                            color: _isReady ? Colors.greenAccent : Colors.white,
+                            color: _isReady ? Colors.greenAccent : Colors.orangeAccent,
                             size: 22,
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            _isReady
-                                ? 'Kondisi Optimal'
-                                : (!_hasFace ? 'Posisikan Wajah' : 'Periksa Cahaya'),
+                            _isReady ? 'Kondisi Optimal' : 'Posisikan Wajah',
                             style: TextStyle(
                               color: _isReady ? Colors.greenAccent : Colors.white,
                               fontSize: 18,
@@ -308,8 +355,6 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
               ),
             ),
           ),
-
-          // 5. Tombol Aksi Bawah (Batal, Jepret Foto, & Putar Kamera)
           Positioned(
             bottom: MediaQuery.of(context).padding.bottom + 45,
             left: 24,
@@ -329,45 +374,47 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
                   ),
                   child: const Text('Batal', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                 ),
-
                 GestureDetector(
                   onTap: _takePicture,
-                  child: AnimatedContainer(
+                  child: AnimatedOpacity(
+                    opacity: _isReady ? 1.0 : 0.4,
                     duration: const Duration(milliseconds: 300),
-                    height: 76,
-                    width: 76,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: _isReady ? Colors.greenAccent : const Color(0xFFE91E63),
-                        width: 4,
-                      ),
-                      color: Colors.transparent,
-                    ),
-                    child: Center(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        height: _isReady ? 60 : 55,
-                        width: _isReady ? 60 : 55,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _isReady ? Colors.greenAccent : const Color(0xFFE91E63),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      height: 76,
+                      width: 76,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: _isReady ? Colors.greenAccent : Colors.grey,
+                          width: 4,
                         ),
-                        child: _isTakingPicture
-                            ? const Padding(
-                                padding: EdgeInsets.all(14.0),
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                              )
-                            : Icon(
-                                Icons.camera_alt,
-                                color: _isReady ? Colors.black87 : Colors.white,
-                                size: 28,
-                              ),
+                        color: Colors.transparent,
+                      ),
+                      child: Center(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          height: _isReady ? 60 : 55,
+                          width: _isReady ? 60 : 55,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _isReady ? Colors.greenAccent : Colors.grey.shade700,
+                          ),
+                          child: _isTakingPicture
+                              ? const Padding(
+                                  padding: EdgeInsets.all(14.0),
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                )
+                              : Icon(
+                                  _isReady ? Icons.camera_alt : Icons.lock_outline,
+                                  color: _isReady ? Colors.black87 : Colors.white60,
+                                  size: 26,
+                                ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-
                 IconButton(
                   onPressed: _switchCamera,
                   style: IconButton.styleFrom(
