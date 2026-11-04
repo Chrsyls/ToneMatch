@@ -91,12 +91,13 @@ class _ResultScreenState extends State<ResultScreen> {
     if (lower.contains('powder') || lower.contains('cake') || lower.contains('loose') || lower.contains('compact')) {
       return 'powder';
     }
-    if (lower.contains('blush') || lower.contains('cheek') || lower.contains('eye') || lower.contains('palette') || lower.contains('mascara') || lower.contains('brow') || lower.contains('bronzer')) {
+    if (lower.contains('blush') || lower.contains('cheek') || lower.contains('eye') || lower.contains('palette') || lower.contains('bronzer')) {
       return 'blush_eye';
     }
     return 'base';
   }
 
+  // Dipetakan hanya ke 4 kategori utama: lipstick, blush, foundation, eyeshadow
   Map<String, String> _mapProductToSdkConfig(String productName) {
     final lower = productName.toLowerCase();
     final tone = widget.detectedUndertone.toLowerCase();
@@ -107,19 +108,13 @@ class _ResultScreenState extends State<ResultScreen> {
         'color': tone == 'cool' ? '#C85A7C' : (tone == 'warm' ? '#E05A47' : '#C05C67'),
       };
     }
-    if (lower.contains('eyeshadow') || lower.contains('palette')) {
+    if (lower.contains('eyeshadow') || lower.contains('palette') || lower.contains('eye')) {
       return {
         'category': 'eyeshadow',
         'color': tone == 'cool' ? '#8E44AD' : (tone == 'warm' ? '#B55239' : '#A84A5C'),
       };
     }
-    if (lower.contains('liner') || lower.contains('brow')) {
-      return {'category': 'eyeliner', 'color': '#141414'};
-    }
-    if (lower.contains('mascara') || lower.contains('lash')) {
-      return {'category': 'mascara', 'color': '#141414'};
-    }
-    if (lower.contains('cushion') || lower.contains('foundation') || lower.contains('powder') || lower.contains('concealer')) {
+    if (lower.contains('cushion') || lower.contains('foundation') || lower.contains('powder') || lower.contains('concealer') || lower.contains('base')) {
       return {
         'category': 'foundation',
         'color': tone == 'cool' ? '#ECC4B2' : (tone == 'warm' ? '#E5B88B' : '#E2B89A'),
@@ -575,7 +570,7 @@ class _ResultScreenState extends State<ResultScreen> {
                   );
                 },
                 icon: const Icon(Icons.face_retouching_natural, color: Color(0xFFFFC107)),
-                label: const Text('Coba AR Virtual Try-On Sekarang 💄', style: TextStyle(fontWeight: FontWeight.bold)),
+                label: const Text('Virtual Try-On Makeup', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
               const SizedBox(height: 10),
               Row(
@@ -621,7 +616,6 @@ class _ResultScreenState extends State<ResultScreen> {
     final userPhotoUrl = widget.imagePath != null ? '$baseUrl/${widget.imagePath}' : null;
     final paletteGuide = _getColorPaletteGuide();
 
-    // Menggunakan List<dynamic> tunggal agar tidak pernah dipotong oleh filter HTML chat
     final List<dynamic> bestColors = List<dynamic>.from(paletteGuide['bestColors']);
 
     return Scaffold(
@@ -722,7 +716,7 @@ class _ResultScreenState extends State<ResultScreen> {
                         },
                         icon: const Icon(Icons.camera_enhance_rounded, color: Colors.white),
                         label: const Text(
-                          'Coba Virtual Try-On',
+                          'Coba Virtual Makeup AR (Live Camera) 💄',
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                         ),
                       ),

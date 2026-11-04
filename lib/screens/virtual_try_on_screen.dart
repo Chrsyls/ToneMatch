@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -26,17 +27,14 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
   bool _isPermissionGranted = false;
   bool _isEngineLoading = true;
 
-  late String _selectedCategory;
-  late String _selectedColor;
-  String _selectedFinish = 'matte';
+  String _selectedCategory = 'lipstick';
+  String? _selectedColor;
 
   final Map<String, String?> _activeMakeupStates = {
     'lipstick': null,
     'blush': null,
     'foundation': null,
     'eyeshadow': null,
-    'eyeliner': null,
-    'mascara': null,
   };
 
   final List<dynamic> _categories = [
@@ -44,19 +42,13 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
     {'id': 'blush', 'label': 'Blush'},
     {'id': 'foundation', 'label': 'Foundation'},
     {'id': 'eyeshadow', 'label': 'Eyeshadow'},
-    {'id': 'eyeliner', 'label': 'Eyeliner'},
-    {'id': 'mascara', 'label': 'Mascara'},
   ];
-
-  final List<String> _finishes = ['matte', 'glossy', 'shimmer', 'glitter'];
 
   @override
   void initState() {
     super.initState();
-    _selectedCategory = widget.initialCategory ?? 'lipstick';
-    final firstItem = _getPalettesForCategory(_selectedCategory).first;
-    _selectedColor = widget.initialColorHex ?? firstItem['hex'].toString();
-    _activeMakeupStates[_selectedCategory] = _selectedColor;
+    final String initCat = (widget.initialCategory ?? 'lipstick').toLowerCase();
+    _selectedCategory = _activeMakeupStates.containsKey(initCat) ? initCat : 'lipstick';
     _initCameraPermissionAndWebView();
   }
 
@@ -86,15 +78,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
           {'name': 'Neutral Caramel', 'hex': '#B07F59'},
         ];
       }
-    }
-
-    if (category == 'eyeliner' || category == 'mascara') {
-      return [
-        {'name': 'Jet Black', 'hex': '#1A1A1A'},
-        {'name': 'Espresso', 'hex': '#4A3525'},
-        {'name': 'Charcoal', 'hex': '#33333D'},
-        {'name': 'Burgundy', 'hex': '#5A1A32'},
-      ];
     }
 
     if (tone == 'warm') {
@@ -156,7 +139,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
             if (mounted) {
               setState(() => _isEngineLoading = false);
             }
-            _applyCurrentMakeupToSdk();
+            _controller?.runJavaScript("if(window.clearToneMatchMakeup) window.clearToneMatchMakeup();");
           }
         },
       )
@@ -221,75 +204,90 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
         `;
         document.head.appendChild(style);
 
-        window.applyToneMatchMakeup = function(category, colorHex, finishName) {
-          try {
-            var tabs = document.querySelectorAll('[role="tab"], button');
-            for (var i = 0; i < tabs.length; i++) {
-              var txt = (tabs[i].textContent || '').trim().toLowerCase();
-              if (txt === category.toLowerCase()) {
-                tabs[i].click();
-                break;
-              }
+        // Fungsi akurat untuk mengeklik tab kategori pada DOM SDK agar landmark wajah tidak tertukar
+        function selectSdkTab(category) {
+          var target = category.trim().toLowerCase();
+          if (target === 'lipstick') target = 'lips'; // Penyesuaian parameter SDK untuk bibir
+          
+          var buttons = document.querySelectorAll('button, [role="tab"], [role="button"]');
+          for (var i = 0; i < buttons.length; i++) {
+            var txt = (buttons[i].textContent || '').trim().toLowerCase();
+            if (txt === target || txt.indexOf(target) !== -1) {
+              buttons[i].click();
+              return true;
             }
+          }
+          return false;
+        }
 
-            setTimeout(function() {
-              var colorInput = document.querySelector('input[type="color"]');
-              if (colorInput) {
-                colorInput.value = colorHex;
-                colorInput.dispatchEvent(new Event('input', { bubbles: true }));
-                colorInput.dispatchEvent(new Event('change', { bubbles: true }));
-              }
-
-              var allBtns = document.querySelectorAll('button');
-              for (var j = 0; j < allBtns.length; j++) {
-                var bTxt = (allBtns[j].textContent || '').trim().toLowerCase();
-                if (bTxt === finishName.toLowerCase()) {
-                  allBtns[j].click();
-                  break;
-                }
-              }
-            }, 120);
-          } catch (e) {}
-        };
-
-        window.clearSingleCategory = function(category) {
-          try {
-            var tabs = document.querySelectorAll('[role="tab"], button');
-            for (var i = 0; i < tabs.length; i++) {
-              var txt = (tabs[i].textContent || '').trim().toLowerCase();
-              if (txt === category.toLowerCase()) {
-                tabs[i].click();
-                break;
-              }
-            }
-            setTimeout(function() {
-              var btns = document.querySelectorAll('button');
-              for (var k = 0; k < btns.length; k++) {
-                var t = (btns[k].textContent || '').trim().toLowerCase();
-                if (t.indexOf('clear') !== -1 || t.indexOf('remove') !== -1 || t.indexOf('off') !== -1) {
-                  btns[k].click();
-                  break;
-                }
-              }
-            }, 100);
-          } catch (e) {}
-        };
-
-        window.clearToneMatchMakeup = function() {
-          var btns = document.querySelectorAll('button');
+        function triggerDomClearActions() {
+          var btns = document.querySelectorAll('button, [role="button"]');
           for (var i = 0; i < btns.length; i++) {
             var t = (btns[i].textContent || '').trim().toLowerCase();
-            if (t.indexOf('clear') !== -1 || t.indexOf('reset') !== -1) {
+            if (t.includes('clear') || t.includes('reset') || t.includes('none') || t.includes('off') || t.includes('remove')) {
               btns[i].click();
             }
           }
+        }
+
+        // Sinkronisasi dan penerapan layer makeup dengan memastikan tab aktif diklik terlebih dahulu
+        window.syncAndApplyLayers = function(activeList) {
+          try {
+            if (window.mk && typeof window.mk.clearAll === 'function') {
+              window.mk.clearAll();
+            }
+            triggerDomClearActions();
+
+            setTimeout(function() {
+              activeList.forEach(function(item, index) {
+                setTimeout(function() {
+                  var sdkCategory = item.category === 'lipstick' ? 'lips' : item.category;
+                  selectSdkTab(sdkCategory);
+
+                  setTimeout(function() {
+                    if (window.mk && typeof window.mk.apply === 'function') {
+                      window.mk.apply(sdkCategory, {
+                        color: item.color,
+                        finish: 'matte',
+                        pattern: 1
+                      });
+                    }
+                    var colorInput = document.querySelector('input[type="color"]');
+                    if (colorInput) {
+                      colorInput.value = item.color;
+                      colorInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      colorInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                  }, 90);
+                }, index * 200);
+              });
+            }, 140);
+          } catch(e) {}
+        };
+
+        window.clearToneMatchMakeup = function() {
+          try {
+            if (window.mk && typeof window.mk.clearAll === 'function') {
+              window.mk.clearAll();
+            }
+            triggerDomClearActions();
+
+            var cats = ['lips', 'lipstick', 'blush', 'foundation', 'eyeshadow'];
+            cats.forEach(function(c, i) {
+              setTimeout(function() {
+                selectSdkTab(c);
+                setTimeout(triggerDomClearActions, 40);
+              }, i * 70);
+            });
+          } catch (e) {}
         };
 
         setTimeout(function() {
+          window.clearToneMatchMakeup();
           if (window.ToneMatchChannel) {
             window.ToneMatchChannel.postMessage('READY');
           }
-        }, 1200);
+        }, 1000);
       })();
     ''';
 
@@ -297,29 +295,42 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
     if (mounted) {
       setState(() => _isEngineLoading = false);
     }
-    _applyCurrentMakeupToSdk();
   }
 
-  void _applyCurrentMakeupToSdk() {
+  void _syncLayersToSdk() {
     if (_controller == null) return;
-    setState(() {
-      _activeMakeupStates[_selectedCategory] = _selectedColor;
+    final List<dynamic> activeLayers = [];
+    _activeMakeupStates.forEach((cat, color) {
+      if (color != null) {
+        activeLayers.add({'category': cat, 'color': color});
+      }
     });
-    final jsCall =
-        "if(window.applyToneMatchMakeup) window.applyToneMatchMakeup('$_selectedCategory', '$_selectedColor', '$_selectedFinish');";
-    _controller!.runJavaScript(jsCall);
+
+    final String jsonPayload = jsonEncode(activeLayers);
+    _controller!.runJavaScript("if(window.syncAndApplyLayers) window.syncAndApplyLayers($jsonPayload);");
+  }
+
+  void _selectColorAndApply(String hexColor) {
+    setState(() {
+      _selectedColor = hexColor;
+      _activeMakeupStates[_selectedCategory] = hexColor;
+    });
+    _syncLayersToSdk();
   }
 
   void _clearSingleCategory() {
     if (_controller == null) return;
+    final String targetCat = _selectedCategory;
     setState(() {
-      _activeMakeupStates[_selectedCategory] = null;
+      _activeMakeupStates[targetCat] = null;
+      if (_selectedColor == _activeMakeupStates[targetCat]) {
+        _selectedColor = null;
+      }
     });
-    _controller!.runJavaScript(
-        "if(window.clearSingleCategory) window.clearSingleCategory('$_selectedCategory');");
+    _syncLayersToSdk();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Makeup ${_selectedCategory.toUpperCase()} dihapus'),
+        content: Text('Makeup ${targetCat.toUpperCase()} berhasil dihapus'),
         duration: const Duration(seconds: 1),
       ),
     );
@@ -329,11 +340,13 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
     if (_controller == null) return;
     setState(() {
       _activeMakeupStates.updateAll((key, value) => null);
+      _selectedColor = null;
     });
     _controller!.runJavaScript("if(window.clearToneMatchMakeup) window.clearToneMatchMakeup();");
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Semua makeup berhasil direset!'),
+        content: Text('Semua lapisan makeup berhasil dihapus (Muka Polos)!'),
+        backgroundColor: Color(0xFFE91E63),
         duration: Duration(seconds: 1),
       ),
     );
@@ -343,12 +356,12 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
   Widget build(BuildContext context) {
     final List<dynamic> palettes = _getPalettesForCategory(_selectedCategory);
     final bool isCurrentCategoryActive = _activeMakeupStates[_selectedCategory] != null;
+    final bool hasAnyActiveMakeup = _activeMakeupStates.values.any((e) => e != null);
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. Tampilan Kamera WebView Fullscreen
           if (_isPermissionGranted && _controller != null)
             Positioned.fill(
               child: WebViewWidget(controller: _controller!),
@@ -378,7 +391,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
               ),
             ),
 
-          // 2. Loading Overlay
           if (_isEngineLoading)
             Container(
               color: Colors.black87,
@@ -397,7 +409,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
               ),
             ),
 
-          // 3. Header Bar Atas
+          // Header Bar Atas
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
@@ -432,10 +444,11 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                     ),
                   ),
                   CircleAvatar(
-                    backgroundColor: Colors.black54,
+                    backgroundColor:
+                        hasAnyActiveMakeup ? const Color(0xFFE91E63) : Colors.black54,
                     child: IconButton(
                       tooltip: 'Reset / Hapus Semua Makeup',
-                      icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+                      icon: const Icon(Icons.layers_clear_rounded, color: Colors.white, size: 20),
                       onPressed: _clearAllMakeup,
                     ),
                   ),
@@ -444,7 +457,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
             ),
           ),
 
-          // 4. Panel Kontrol Bawah (Tombol Kategori Kustom dengan Teks Kontras Terbaca Jelas)
+          // Panel Kontrol Bawah
           if (!_isEngineLoading)
             Align(
               alignment: Alignment.bottomCenter,
@@ -478,58 +491,38 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              const Text(
-                                'Shade & Finish',
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                              ),
-                              const SizedBox(width: 8),
-                              if (isCurrentCategoryActive)
-                                InkWell(
-                                  onTap: _clearSingleCategory,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.redAccent.withOpacity(0.9),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      'Hapus ${_selectedCategory.toUpperCase()}',
-                                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                                ),
-                            ],
+                          Text(
+                            'Pilihan Warna ${_selectedCategory.toUpperCase()}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
                           ),
-                          if (_selectedCategory != 'eyeliner' && _selectedCategory != 'mascara')
-                            SizedBox(
-                              height: 32,
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  dropdownColor: const Color(0xFF2B121C),
-                                  value: _selectedFinish,
-                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                  items: _finishes.map((f) {
-                                    return DropdownMenuItem(
-                                      value: f,
-                                      child: Text(f.toUpperCase()),
-                                    );
-                                  }).toList(),
-                                  onChanged: (val) {
-                                    if (val != null) {
-                                      setState(() => _selectedFinish = val);
-                                      _applyCurrentMakeupToSdk();
-                                    }
-                                  },
+                          if (isCurrentCategoryActive)
+                            InkWell(
+                              onTap: _clearSingleCategory,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.redAccent.withOpacity(0.9),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  'Hapus ${_selectedCategory.toUpperCase()}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ),
                         ],
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
 
-                      // Pilihan Warna Shade (Dengan Latar Belakang Kotak Gelap Agar Teks Terbaca Jelas)
+                      // Pilihan Warna Shade Terpadu
                       SizedBox(
                         height: 68,
                         child: ListView.builder(
@@ -539,14 +532,12 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                             final item = palettes[idx];
                             final String hex = item['hex'].toString();
                             final String shadeName = item['name'].toString();
-                            final bool isSelected = _selectedColor.toLowerCase() == hex.toLowerCase();
+                            final bool isSelected = isCurrentCategoryActive &&
+                                _activeMakeupStates[_selectedCategory]?.toLowerCase() == hex.toLowerCase();
                             final Color colorObj = Color(int.parse(hex.replaceFirst('#', '0xFF')));
 
                             return GestureDetector(
-                              onTap: () {
-                                setState(() => _selectedColor = hex);
-                                _applyCurrentMakeupToSdk();
-                              },
+                              onTap: () => _selectColorAndApply(hex),
                               child: Container(
                                 margin: const EdgeInsets.only(right: 12),
                                 child: Column(
@@ -593,9 +584,9 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                           },
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
 
-                      // Pilihan Kategori Makeup (Kustom Container agar Warna Teks 100% Kontras & Terbaca Jelas)
+                      // Pilihan 4 Kategori Utama
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
@@ -609,17 +600,11 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                               onTap: () {
                                 setState(() {
                                   _selectedCategory = catId;
-                                  if (_activeMakeupStates[catId] != null) {
-                                    _selectedColor = _activeMakeupStates[catId]!;
-                                  } else {
-                                    _selectedColor = _getPalettesForCategory(_selectedCategory).first['hex'].toString();
-                                  }
                                 });
-                                _applyCurrentMakeupToSdk();
                               },
                               child: Container(
-                                margin: const EdgeInsets.only(right: 6),
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                margin: const EdgeInsets.only(right: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                                 decoration: BoxDecoration(
                                   color: isSelected ? const Color(0xFFE91E63) : const Color(0xFF3A1E2B),
                                   borderRadius: BorderRadius.circular(16),
