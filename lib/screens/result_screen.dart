@@ -716,7 +716,7 @@ class _ResultScreenState extends State<ResultScreen> {
                         },
                         icon: const Icon(Icons.camera_enhance_rounded, color: Colors.white),
                         label: const Text(
-                          'Coba Virtual Makeup AR (Live Camera) 💄',
+                          'Virtual Try-On Makeup',
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                         ),
                       ),
