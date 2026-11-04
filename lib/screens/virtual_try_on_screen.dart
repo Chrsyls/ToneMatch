@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class VirtualTryOnScreen extends StatefulWidget {
   final String undertone;
@@ -26,6 +28,21 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
   WebViewController? _controller;
   bool _isPermissionGranted = false;
   bool _isEngineLoading = true;
+  
+  // Status untuk Toggle Dropdown / Minimalkan Panel Kontrol Bawah
+  bool _isPanelExpanded = true;
+
+  List<dynamic> _apiProducts = [];
+  Map<String, dynamic>? _matchedProduct;
+  bool _isLoadingProducts = false;
+  final String _localBaseUrl = 'http://10.4.89.111:8000';
+
+  bool get _isFreeExperiment => widget.undertone.toLowerCase() == 'free_experiment';
+
+  String _experimentMode = 'preset';
+  double _customRed = 224;
+  double _customGreen = 90;
+  double _customBlue = 71;
 
   String _selectedCategory = 'lipstick';
   String? _selectedColor;
@@ -35,35 +52,167 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
     'blush': null,
     'foundation': null,
     'eyeshadow': null,
+    'eyeliner': null,
   };
 
-  final List<dynamic> _categories = [
+  final List _categories = [
     {'id': 'lipstick', 'label': 'Lipstick'},
     {'id': 'blush', 'label': 'Blush'},
     {'id': 'foundation', 'label': 'Foundation'},
     {'id': 'eyeshadow', 'label': 'Eyeshadow'},
+    {'id': 'eyeliner', 'label': 'Eyeliner'},
   ];
+
+  List get _makeupTemplates {
+    final tone = widget.undertone.toLowerCase();
+    if (tone == 'warm') {
+      return [
+        {
+          'name': 'Warm Sunset',
+          'icon': Icons.wb_sunny_outlined,
+          'layers': {'lipstick': '#E05A47', 'blush': '#B83B2A', 'foundation': '#E5B88B', 'eyeshadow': '#B55239', 'eyeliner': '#4A3525'}
+        },
+        {
+          'name': 'Golden Glow',
+          'icon': Icons.auto_awesome,
+          'layers': {'lipstick': '#C67B5C', 'blush': '#D47A45', 'foundation': '#F3D6B6', 'eyeshadow': '#D19C67', 'eyeliner': '#1A1A1A'}
+        },
+      ];
+    } else if (tone == 'cool') {
+      return [
+        {
+          'name': 'Berry Chic',
+          'icon': Icons.spa_outlined,
+          'layers': {'lipstick': '#B4002E', 'blush': '#C85A7C', 'foundation': '#ECC4B2', 'eyeshadow': '#8E44AD', 'eyeliner': '#1A1A1A'}
+        },
+        {
+          'name': 'Cool Mauve',
+          'icon': Icons.ac_unit,
+          'layers': {'lipstick': '#7A1C4B', 'blush': '#D81B60', 'foundation': '#F7DFD4', 'eyeshadow': '#6B0F2B', 'eyeliner': '#33333D'}
+        },
+      ];
+    } else if (tone == 'neutral') {
+      return [
+        {
+          'name': 'Natural Neutral',
+          'icon': Icons.face_retouching_natural,
+          'layers': {'lipstick': '#C05C67', 'blush': '#B56B60', 'foundation': '#F4D9C6', 'eyeshadow': '#A84A5C', 'eyeliner': '#33333D'}
+        },
+        {
+          'name': 'Soft Rosewood',
+          'icon': Icons.auto_awesome,
+          'layers': {'lipstick': '#8F2D38', 'blush': '#A84A5C', 'foundation': '#E2B89A', 'eyeshadow': '#8D4E3F', 'eyeliner': '#1A1A1A'}
+        },
+      ];
+    } else {
+      return [
+        {
+          'name': 'Natural Glow',
+          'icon': Icons.wb_sunny_outlined,
+          'layers': {'lipstick': '#F4D9C6', 'blush': '#E05A47', 'foundation': '#E2B89A', 'eyeshadow': '#C67B5C', 'eyeliner': '#33333D'}
+        },
+        {
+          'name': 'Bold Glam',
+          'icon': Icons.auto_awesome,
+          'layers': {'lipstick': '#B4002E', 'blush': '#7A1C4B', 'foundation': '#D19C67', 'eyeshadow': '#8E44AD', 'eyeliner': '#1A1A1A'}
+        },
+      ];
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     final String initCat = (widget.initialCategory ?? 'lipstick').toLowerCase();
     _selectedCategory = _activeMakeupStates.containsKey(initCat) ? initCat : 'lipstick';
+    if (widget.initialColorHex != null) {
+      _selectedColor = widget.initialColorHex;
+      _activeMakeupStates[_selectedCategory] = _selectedColor;
+    }
+    _fetchProductsFromBackend();
     _initCameraPermissionAndWebView();
   }
 
-  List<dynamic> _getPalettesForCategory(String category) {
-    final tone = widget.undertone.toLowerCase();
+  Future<void> _fetchProductsFromBackend() async {
+    setState(() => _isLoadingProducts = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final uid = prefs.getString('user_uid') ?? 'usr_dummy_01';
+      final targetTone = _isFreeExperiment ? 'neutral' : widget.undertone.toLowerCase();
+      
+      final response = await http.get(Uri.parse('$_localBaseUrl/api/v1/recommendations/$targetTone?user_id=$uid'));
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded['success'] == true) {
+          setState(() {
+            _apiProducts = decoded['data'] ?? [];
+            _updateMatchedProduct();
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Gagal mengambil produk API: $e");
+    } finally {
+      if (mounted) setState(() => _isLoadingProducts = false);
+    }
+  }
+
+  void _updateMatchedProduct() {
+    if (_apiProducts.isEmpty) {
+      _matchedProduct = null;
+      return;
+    }
+
+    final matched = _apiProducts.firstWhere((prod) {
+      final name = (prod['product_name'] ?? '').toString().toLowerCase();
+      if (_selectedCategory == 'lipstick') {
+        return name.contains('lip') || name.contains('tint') || name.contains('matte') || name.contains('gloss');
+      } else if (_selectedCategory == 'blush') {
+        return name.contains('blush') || name.contains('cheek') || name.contains('rouge');
+      } else if (_selectedCategory == 'foundation') {
+        return name.contains('cushion') || name.contains('foundation') || name.contains('base');
+      } else if (_selectedCategory == 'eyeshadow') {
+        return name.contains('eye') || name.contains('shadow') || name.contains('palette');
+      } else if (_selectedCategory == 'eyeliner') {
+        return name.contains('liner') || name.contains('pen') || name.contains('kohl');
+      }
+      return false;
+    }, orElse: () => _apiProducts.first);
+
+    setState(() {
+      _matchedProduct = matched;
+    });
+  }
+
+  String _rgbToHex(int r, int g, int b) {
+    return '#${r.toRadixString(16).padLeft(2, '0')}${g.toRadixString(16).padLeft(2, '0')}${b.toRadixString(16).padLeft(2, '0')}'
+        .toUpperCase();
+  }
+
+  List _getPalettesForCategory(String category) {
+    if (_isFreeExperiment && _experimentMode == 'custom') {
+      final customHex = _rgbToHex(_customRed.toInt(), _customGreen.toInt(), _customBlue.toInt());
+      return [
+        {'name': 'Custom Mix', 'hex': customHex},
+      ];
+    }
+
+    String effectiveTone = widget.undertone.toLowerCase();
+    if (_isFreeExperiment) {
+      if (_experimentMode == 'warm') effectiveTone = 'warm';
+      if (_experimentMode == 'cool') effectiveTone = 'cool';
+      if (_experimentMode == 'preset') effectiveTone = 'neutral';
+    }
 
     if (category == 'foundation') {
-      if (tone == 'warm') {
+      if (effectiveTone == 'warm') {
         return [
           {'name': 'Warm Ivory', 'hex': '#F3D6B6'},
           {'name': 'Golden Beige', 'hex': '#E5B88B'},
           {'name': 'Warm Honey', 'hex': '#D19C67'},
           {'name': 'Warm Tan', 'hex': '#B87D4B'},
         ];
-      } else if (tone == 'cool') {
+      } else if (effectiveTone == 'cool') {
         return [
           {'name': 'Porcelain Rose', 'hex': '#F7DFD4'},
           {'name': 'Cool Vanilla', 'hex': '#ECC4B2'},
@@ -80,7 +229,16 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
       }
     }
 
-    if (tone == 'warm') {
+    if (category == 'eyeliner') {
+      return [
+        {'name': 'Jet Black', 'hex': '#1A1A1A'},
+        {'name': 'Espresso', 'hex': '#4A3525'},
+        {'name': 'Charcoal', 'hex': '#33333D'},
+        {'name': 'Burgundy', 'hex': '#5A1A32'},
+      ];
+    }
+
+    if (effectiveTone == 'warm') {
       return [
         {'name': 'Peach Coral', 'hex': '#E05A47'},
         {'name': 'Terracotta', 'hex': '#B83B2A'},
@@ -89,7 +247,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
         {'name': 'Cinnamon', 'hex': '#B55239'},
         {'name': 'Bronze', 'hex': '#D47A45'},
       ];
-    } else if (tone == 'cool') {
+    } else if (effectiveTone == 'cool') {
       return [
         {'name': 'Berry Rose', 'hex': '#B4002E'},
         {'name': 'Mauve Pink', 'hex': '#C85A7C'},
@@ -204,10 +362,9 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
         `;
         document.head.appendChild(style);
 
-        // Fungsi akurat untuk mengeklik tab kategori pada DOM SDK agar landmark wajah tidak tertukar
         function selectSdkTab(category) {
           var target = category.trim().toLowerCase();
-          if (target === 'lipstick') target = 'lips'; // Penyesuaian parameter SDK untuk bibir
+          if (target === 'lipstick') target = 'lips';
           
           var buttons = document.querySelectorAll('button, [role="tab"], [role="button"]');
           for (var i = 0; i < buttons.length; i++) {
@@ -230,7 +387,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
           }
         }
 
-        // Sinkronisasi dan penerapan layer makeup dengan memastikan tab aktif diklik terlebih dahulu
         window.syncAndApplyLayers = function(activeList) {
           try {
             if (window.mk && typeof window.mk.clearAll === 'function') {
@@ -272,7 +428,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
             }
             triggerDomClearActions();
 
-            var cats = ['lips', 'lipstick', 'blush', 'foundation', 'eyeshadow'];
+            var cats = ['lips', 'lipstick', 'blush', 'foundation', 'eyeshadow', 'eyeliner'];
             cats.forEach(function(c, i) {
               setTimeout(function() {
                 selectSdkTab(c);
@@ -299,7 +455,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
 
   void _syncLayersToSdk() {
     if (_controller == null) return;
-    final List<dynamic> activeLayers = [];
+    final List activeLayers = [];
     _activeMakeupStates.forEach((cat, color) {
       if (color != null) {
         activeLayers.add({'category': cat, 'color': color});
@@ -316,6 +472,27 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
       _activeMakeupStates[_selectedCategory] = hexColor;
     });
     _syncLayersToSdk();
+  }
+
+  void _applyTemplate(Map templateLayers) {
+    setState(() {
+      templateLayers.forEach((cat, hex) {
+        if (_activeMakeupStates.containsKey(cat)) {
+          _activeMakeupStates[cat] = hex;
+        }
+      });
+      if (_activeMakeupStates.containsKey(_selectedCategory)) {
+        _selectedColor = _activeMakeupStates[_selectedCategory];
+      }
+    });
+    _syncLayersToSdk();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Template Makeup Style diterapkan! ✨'),
+        backgroundColor: Color(0xFFE91E63),
+        duration: Duration(seconds: 1),
+      ),
+    );
   }
 
   void _clearSingleCategory() {
@@ -354,9 +531,10 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<dynamic> palettes = _getPalettesForCategory(_selectedCategory);
+    final List palettes = _getPalettesForCategory(_selectedCategory);
     final bool isCurrentCategoryActive = _activeMakeupStates[_selectedCategory] != null;
     final bool hasAnyActiveMakeup = _activeMakeupStates.values.any((e) => e != null);
+    final String? activeColorForCurrentCat = _activeMakeupStates[_selectedCategory];
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -409,7 +587,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
               ),
             ),
 
-          // Header Bar Atas
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
@@ -435,7 +612,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                       child: Text(
                         widget.initialProductName != null
                             ? 'Try-On: ${widget.initialProductName}'
-                            : 'Virtual Try-On • ${widget.undertone.toUpperCase()}',
+                            : (_isFreeExperiment ? 'Virtual Try-On • EKSPERIMEN BEBAS' : 'Virtual Try-On • ${widget.undertone.toUpperCase()}'),
                         textAlign: TextAlign.center,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -457,14 +634,13 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
             ),
           ),
 
-          // Panel Kontrol Bawah
           if (!_isEngineLoading)
             Align(
               alignment: Alignment.bottomCenter,
               child: SafeArea(
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
@@ -488,150 +664,333 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Tombol Toggle Dropdown / Minimalkan Panel agar Wajah Terlihat Luas
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Pilihan Warna ${_selectedCategory.toUpperCase()}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          if (isCurrentCategoryActive)
-                            InkWell(
-                              onTap: _clearSingleCategory,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.redAccent.withOpacity(0.9),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  'Hapus ${_selectedCategory.toUpperCase()}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
+                          Row(
+                            children: [
+                              const Icon(Icons.tune_rounded, color: Color(0xFFE91E63), size: 16),
+                              const SizedBox(width: 6),
+                              Text(
+                                _isPanelExpanded ? 'Panel Kontrol Makeup' : 'Ketuk untuk Buka Panel',
+                                style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
                               ),
+                            ],
+                          ),
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            icon: Icon(
+                              _isPanelExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
+                              color: Colors.white,
+                              size: 22,
                             ),
+                            onPressed: () => setState(() => _isPanelExpanded = !_isPanelExpanded),
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 12),
 
-                      // Pilihan Warna Shade Terpadu
-                      SizedBox(
-                        height: 68,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: palettes.length,
-                          itemBuilder: (context, idx) {
-                            final item = palettes[idx];
-                            final String hex = item['hex'].toString();
-                            final String shadeName = item['name'].toString();
-                            final bool isSelected = isCurrentCategoryActive &&
-                                _activeMakeupStates[_selectedCategory]?.toLowerCase() == hex.toLowerCase();
-                            final Color colorObj = Color(int.parse(hex.replaceFirst('#', '0xFF')));
+                      // Jika panel dibuka (Expanded), tampilkan seluruh opsi kontrol
+                      if (_isPanelExpanded) ...[
+                        const SizedBox(height: 8),
+                        if (_isFreeExperiment) ...[
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _buildModeChip('Auto Preset', 'preset'),
+                                const SizedBox(width: 6),
+                                _buildModeChip('Warm Tone', 'warm'),
+                                const SizedBox(width: 6),
+                                _buildModeChip('Cool Tone', 'cool'),
+                                const SizedBox(width: 6),
+                                _buildModeChip('Custom Slider', 'custom'),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
 
-                            return GestureDetector(
-                              onTap: () => _selectColorAndApply(hex),
-                              child: Container(
-                                margin: const EdgeInsets.only(right: 12),
-                                child: Column(
+                        if (_isFreeExperiment && _experimentMode == 'custom') ...[
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Custom Color Slider (RGB)', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+                                Row(
                                   children: [
-                                    Container(
-                                      width: 34,
-                                      height: 34,
-                                      decoration: BoxDecoration(
-                                        color: colorObj,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: isSelected ? Colors.white : Colors.white54,
-                                          width: isSelected ? 3.0 : 1.5,
-                                        ),
-                                        boxShadow: isSelected
-                                            ? [BoxShadow(color: colorObj.withOpacity(0.9), blurRadius: 6)]
-                                            : null,
+                                    const Text('R', style: TextStyle(color: Colors.redAccent, fontSize: 10)),
+                                    Expanded(
+                                      child: Slider(
+                                        activeColor: Colors.redAccent,
+                                        value: _customRed, min: 0, max: 255,
+                                        onChanged: (val) {
+                                          setState(() => _customRed = val);
+                                          if (_activeMakeupStates[_selectedCategory] != null) {
+                                            _selectColorAndApply(_rgbToHex(_customRed.toInt(), _customGreen.toInt(), _customBlue.toInt()));
+                                          }
+                                        },
                                       ),
-                                      child: isSelected
-                                          ? const Icon(Icons.check, size: 16, color: Colors.white)
-                                          : null,
                                     ),
-                                    const SizedBox(height: 4),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.85),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: Colors.white24, width: 0.5),
+                                    const Text('G', style: TextStyle(color: Colors.greenAccent, fontSize: 10)),
+                                    Expanded(
+                                      child: Slider(
+                                        activeColor: Colors.greenAccent,
+                                        value: _customGreen, min: 0, max: 255,
+                                        onChanged: (val) {
+                                          setState(() => _customGreen = val);
+                                          if (_activeMakeupStates[_selectedCategory] != null) {
+                                            _selectColorAndApply(_rgbToHex(_customRed.toInt(), _customGreen.toInt(), _customBlue.toInt()));
+                                          }
+                                        },
                                       ),
-                                      child: Text(
-                                        shadeName,
-                                        style: TextStyle(
-                                          color: isSelected ? Colors.amberAccent : Colors.white,
-                                          fontSize: 9,
-                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                        ),
+                                    ),
+                                    const Text('B', style: TextStyle(color: Colors.blueAccent, fontSize: 10)),
+                                    Expanded(
+                                      child: Slider(
+                                        activeColor: Colors.blueAccent,
+                                        value: _customBlue, min: 0, max: 255,
+                                        onChanged: (val) {
+                                          setState(() => _customBlue = val);
+                                          if (_activeMakeupStates[_selectedCategory] != null) {
+                                            _selectColorAndApply(_rgbToHex(_customRed.toInt(), _customGreen.toInt(), _customBlue.toInt()));
+                                          }
+                                        },
                                       ),
                                     ),
                                   ],
                                 ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 8),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
 
-                      // Pilihan 4 Kategori Utama
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: _categories.map((cat) {
-                            final String catId = cat['id'].toString();
-                            final String catLabel = cat['label'].toString();
-                            final bool isSelected = _selectedCategory == catId;
-                            final bool hasActiveMakeup = _activeMakeupStates[catId] != null;
-
-                            return GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _selectedCategory = catId;
-                                });
-                              },
-                              child: Container(
-                                margin: const EdgeInsets.only(right: 8),
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                                decoration: BoxDecoration(
-                                  color: isSelected ? const Color(0xFFE91E63) : const Color(0xFF3A1E2B),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: isSelected ? Colors.white : Colors.white24,
-                                    width: isSelected ? 1.5 : 1.0,
+                        const Text('Makeup Style / Template Instan', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: _makeupTemplates.map((tpl) {
+                              return GestureDetector(
+                                onTap: () => _applyTemplate(Map.from(tpl['layers'] as Map)),
+                                child: Container(
+                                  margin: const EdgeInsets.only(right: 6),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF4A2333),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.pinkAccent.withOpacity(0.4)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(tpl['icon'] as IconData, size: 14, color: Colors.amberAccent),
+                                      const SizedBox(width: 4),
+                                      Text(tpl['name'].toString(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    ],
                                   ),
                                 ),
-                                child: Text(
-                                  hasActiveMakeup ? '$catLabel ✓' : catLabel,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                                    fontSize: 11,
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Pilihan Warna ${_selectedCategory.toUpperCase()}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                            if (isCurrentCategoryActive)
+                              InkWell(
+                                onTap: _clearSingleCategory,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.redAccent.withOpacity(0.9),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    'Hapus ${_selectedCategory.toUpperCase()}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ),
-                            );
-                          }).toList(),
+                          ],
                         ),
-                      ),
+                        const SizedBox(height: 6),
+
+                        SizedBox(
+                          height: 58,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: palettes.length,
+                            itemBuilder: (context, idx) {
+                              final item = palettes[idx];
+                              final String hex = item['hex'].toString();
+                              final String shadeName = item['name'].toString();
+                              final bool isSelected = isCurrentCategoryActive &&
+                                  activeColorForCurrentCat?.toLowerCase() == hex.toLowerCase();
+                              final Color colorObj = Color(int.parse(hex.replaceFirst('#', '0xFF')));
+
+                              return GestureDetector(
+                                onTap: () => _selectColorAndApply(hex),
+                                child: Container(
+                                  margin: const EdgeInsets.only(right: 10),
+                                  child: Column(
+                                    children: [
+                                      Container(
+                                        width: 30,
+                                        height: 30,
+                                        decoration: BoxDecoration(
+                                          color: colorObj,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: isSelected ? Colors.white : Colors.white54,
+                                            width: isSelected ? 2.5 : 1.0,
+                                          ),
+                                        ),
+                                        child: isSelected
+                                            ? const Icon(Icons.check, size: 14, color: Colors.white)
+                                            : null,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        shadeName,
+                                        style: TextStyle(
+                                          color: isSelected ? Colors.amberAccent : Colors.white70,
+                                          fontSize: 8,
+                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: _categories.map((cat) {
+                              final String catId = cat['id'].toString();
+                              final String catLabel = cat['label'].toString();
+                              final bool isSelected = _selectedCategory == catId;
+                              final bool hasActiveMakeup = _activeMakeupStates[catId] != null;
+
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _selectedCategory = catId;
+                                    _updateMatchedProduct();
+                                  });
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.only(right: 6),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? const Color(0xFFE91E63) : const Color(0xFF3A1E2B),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: isSelected ? Colors.white : Colors.white24,
+                                      width: isSelected ? 1.5 : 1.0,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    hasActiveMakeup ? '$catLabel ✓' : catLabel,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: Row(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: _matchedProduct != null && _matchedProduct!['image_url'] != null
+                                    ? Image.network(_matchedProduct!['image_url'], width: 36, height: 36, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.brush, size: 24, color: Color(0xFFE91E63)))
+                                    : Container(width: 36, height: 36, color: const Color(0xFFE91E63).withOpacity(0.2), child: const Icon(Icons.brush, size: 20, color: Color(0xFFE91E63))),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _matchedProduct != null ? (_matchedProduct!['product_name'] ?? 'Produk Terkait') : 'Produk ${_selectedCategory.toUpperCase()}',
+                                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      _matchedProduct != null ? '${_matchedProduct!['brand']} • Rp ${_matchedProduct!['price']}' : 'Rekomendasi sesuai shade',
+                                      style: const TextStyle(color: Colors.white70, fontSize: 9),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildModeChip(String label, String modeVal) {
+    final bool isSelected = _experimentMode == modeVal;
+    return GestureDetector(
+      onTap: () => setState(() => _experimentMode = modeVal),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFE91E63) : Colors.white12,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: isSelected ? Colors.white : Colors.white24),
+        ),
+        child: Text(label, style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
       ),
     );
   }

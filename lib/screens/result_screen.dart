@@ -97,7 +97,6 @@ class _ResultScreenState extends State<ResultScreen> {
     return 'base';
   }
 
-  // Dipetakan hanya ke 4 kategori utama: lipstick, blush, foundation, eyeshadow
   Map<String, String> _mapProductToSdkConfig(String productName) {
     final lower = productName.toLowerCase();
     final tone = widget.detectedUndertone.toLowerCase();
@@ -278,7 +277,7 @@ class _ResultScreenState extends State<ResultScreen> {
 
             return Padding(
               padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 24,
                 left: 24, right: 24, top: 20,
               ),
               child: SingleChildScrollView(
@@ -519,91 +518,99 @@ class _ResultScreenState extends State<ResultScreen> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
         return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: imageUrl != null && imageUrl.toString().isNotEmpty
-                      ? Image.network(imageUrl, width: 120, height: 120, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.image, size: 80, color: Colors.grey))
-                      : Container(width: 120, height: 120, color: Colors.pink.shade50, child: const Icon(Icons.brush, size: 50, color: Color(0xFFE91E63))),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(brand, style: const TextStyle(color: Color(0xFFE91E63), fontWeight: FontWeight.bold, fontSize: 14)),
-              Text(productName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(price, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(color: const Color(0xFFFCE4EC), borderRadius: BorderRadius.circular(8)),
-                    child: Text('Undertone: $undertone', style: const TextStyle(color: Color(0xFFE91E63), fontWeight: FontWeight.bold, fontSize: 12)),
+          padding: EdgeInsets.only(
+            top: 24,
+            left: 24,
+            right: 24,
+            // Memastikan padding bawah modal sheet aman dari navigasi sistem perangkat
+            bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: imageUrl != null && imageUrl.toString().isNotEmpty
+                        ? Image.network(imageUrl, width: 120, height: 120, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.image, size: 80, color: Colors.grey))
+                        : Container(width: 120, height: 120, color: Colors.pink.shade50, child: const Icon(Icons.brush, size: 50, color: Color(0xFFE91E63))),
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4A2333),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 48),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
-                onPressed: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => VirtualTryOnScreen(
-                        undertone: widget.detectedUndertone,
-                        initialCategory: sdkConfig['category'],
-                        initialColorHex: sdkConfig['color'],
-                        initialProductName: productName,
+                const SizedBox(height: 16),
+                Text(brand, style: const TextStyle(color: Color(0xFFE91E63), fontWeight: FontWeight.bold, fontSize: 14)),
+                Text(productName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2333))),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(price, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF4A2333))),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(color: const Color(0xFFFCE4EC), borderRadius: BorderRadius.circular(8)),
+                      child: Text('Undertone: $undertone', style: const TextStyle(color: Color(0xFFE91E63), fontWeight: FontWeight.bold, fontSize: 12)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4A2333),
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => VirtualTryOnScreen(
+                          undertone: widget.detectedUndertone,
+                          initialCategory: sdkConfig['category'],
+                          initialColorHex: sdkConfig['color'],
+                          initialProductName: productName,
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.face_retouching_natural, color: Color(0xFFFFC107)),
+                  label: const Text('Virtual Try-On Makeup', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFEE4D2D), side: const BorderSide(color: Color(0xFFEE4D2D))),
+                        onPressed: () => _launchMarketplace('shopee', productName, brand),
+                        icon: const Icon(Icons.shopping_bag_outlined, size: 18),
+                        label: const Text('Shopee'),
                       ),
                     ),
-                  );
-                },
-                icon: const Icon(Icons.face_retouching_natural, color: Color(0xFFFFC107)),
-                label: const Text('Virtual Try-On Makeup', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFEE4D2D), side: const BorderSide(color: Color(0xFFEE4D2D))),
-                      onPressed: () => _launchMarketplace('shopee', productName, brand),
-                      icon: const Icon(Icons.shopping_bag_outlined, size: 18),
-                      label: const Text('Shopee'),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFF03AC0E), side: const BorderSide(color: Color(0xFF03AC0E))),
+                        onPressed: () => _launchMarketplace('tokopedia', productName, brand),
+                        icon: const Icon(Icons.storefront_outlined, size: 18),
+                        label: const Text('Tokopedia'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFF03AC0E), side: const BorderSide(color: Color(0xFF03AC0E))),
-                      onPressed: () => _launchMarketplace('tokopedia', productName, brand),
-                      icon: const Icon(Icons.storefront_outlined, size: 18),
-                      label: const Text('Tokopedia'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63), minimumSize: const Size(double.infinity, 50)),
-                onPressed: () {
-                  Navigator.pop(context);
-                  _toggleSaveProduct(prod['product_id'].toString(), prod['is_saved'] ?? false);
-                },
-                child: const Text('Simpan ke Favorit ❤️', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-            ],
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E63), minimumSize: const Size(double.infinity, 50)),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _toggleSaveProduct(prod['product_id'].toString(), prod['is_saved'] ?? false);
+                  },
+                  child: const Text('Simpan ke Favorit ❤️', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -627,7 +634,7 @@ class _ResultScreenState extends State<ResultScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.all(20.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -652,7 +659,8 @@ class _ResultScreenState extends State<ResultScreen> {
                 ),
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    // Padding bawah menyertakan MediaQuery.of(context).padding.bottom agar bebas dari navbar bawah
+                    padding: EdgeInsets.fromLTRB(24, 8, 24, MediaQuery.of(context).padding.bottom + 40),
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(24),
@@ -920,7 +928,6 @@ class _ResultScreenState extends State<ResultScreen> {
                                     );
                                   },
                                 ),
-                      const SizedBox(height: 40),
                     ],
                   ),
                 ),
