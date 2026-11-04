@@ -13,7 +13,6 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderStateMixin {
   CameraController? _controller;
   List<CameraDescription>? _cameras;
-  int _selectedCameraIdx = 0;
 
   bool _isCameraInitialized = false;
   bool _isProcessing = false;
@@ -32,28 +31,24 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
-    _initCamera();
+    _initFrontCamera();
   }
 
-  Future<void> _initCamera({int? cameraIndex}) async {
+  // Hanya menginisialisasi kamera depan secara mutlak
+  Future<void> _initFrontCamera() async {
     try {
       _cameras ??= await availableCameras();
       if (_cameras != null && _cameras!.isNotEmpty) {
-        if (cameraIndex != null) {
-          _selectedCameraIdx = cameraIndex;
-        } else {
-          final frontIdx = _cameras!.indexWhere(
-            (camera) => camera.lensDirection == CameraLensDirection.front,
-          );
-          _selectedCameraIdx = frontIdx != -1 ? frontIdx : 0;
-        }
-
-        final CameraDescription selectedCamera = _cameras![_selectedCameraIdx];
+        // Cari indeks kamera yang mengarah ke depan (front)
+        final frontCamera = _cameras!.firstWhere(
+          (camera) => camera.lensDirection == CameraLensDirection.front,
+          orElse: () => _cameras!.first,
+        );
 
         await _controller?.dispose();
 
         _controller = CameraController(
-          selectedCamera,
+          frontCamera,
           ResolutionPreset.medium,
           enableAudio: false,
           imageFormatGroup: ImageFormatGroup.yuv420,
@@ -76,18 +71,10 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
         });
       }
     } catch (e) {
-      debugPrint("Error inisialisasi kamera: $e");
+      debugPrint("Error inisialisasi kamera depan: $e");
     }
   }
 
-  Future<void> _switchCamera() async {
-    if (_cameras == null || _cameras!.length < 2) return;
-    setState(() => _isCameraInitialized = false);
-    final nextIdx = (_selectedCameraIdx + 1) % _cameras!.length;
-    await _initCamera(cameraIndex: nextIdx);
-  }
-
-  // Logika Pengecekan Diperbaiki: Validasi Cahaya Didahulukan Sebelum Deteksi Wajah
   void _checkLightingAndFace(CameraImage image) {
     try {
       final yBytes = image.planes[0].bytes;
@@ -100,12 +87,12 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
       }
       double avgLuminance = yTotal / (yBytes.length / 20);
 
-      // 1. PRIORITAS UTAMA: Cek apakah pencahayaan terlalu gelap atau terlalu silau
+      // 1. Validasi Pencahayaan
       bool isLightingGood = avgLuminance > 35 && avgLuminance < 220;
 
       bool isFaceDetected = false;
 
-      // 2. Hanya jalankan deteksi wajah jika pencahayaan sudah memadai
+      // 2. Jalankan deteksi wajah jika pencahayaan memadai
       if (isLightingGood && image.planes.length >= 3) {
         final uBytes = image.planes[1].bytes;
         final vBytes = image.planes[2].bytes;
@@ -140,7 +127,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
         }
       }
 
-      // 3. Susun Pesan Status Peringatan yang Akurat
+      // 3. Susun Pesan Status Peringatan
       String status = '';
       if (!isLightingGood) {
         status = avgLuminance <= 35 
@@ -327,8 +314,9 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
             left: 24,
             right: 24,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // Tombol Batal
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   style: TextButton.styleFrom(
@@ -341,6 +329,9 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
                   ),
                   child: const Text('Batal', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                 ),
+                const SizedBox(width: 40),
+
+                // Tombol Jepret Foto Utama
                 GestureDetector(
                   onTap: _takePicture,
                   child: AnimatedOpacity(
@@ -381,15 +372,6 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
                       ),
                     ),
                   ),
-                ),
-                IconButton(
-                  onPressed: _switchCamera,
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.white12,
-                    padding: const EdgeInsets.all(14),
-                  ),
-                  icon: const Icon(Icons.cameraswitch_rounded, color: Colors.white, size: 26),
-                  tooltip: 'Ganti Kamera',
                 ),
               ],
             ),
