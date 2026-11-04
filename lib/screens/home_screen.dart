@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/dynamic_background.dart';
 import 'camera_screen.dart';
 import 'result_screen.dart';
-import 'virtual_try_on_screen.dart'; // Ditambahkan import untuk VirtualTryOnScreen[cite: 17]
+import 'virtual_try_on_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,7 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isAnalyzing = false;
 
   final String vlmBaseUrl = 'https://api.tonematch.web.id';
-  final String localBaseUrl = 'http://10.4.89.111:8000'; // Sesuaikan IP VPS Anda
+  final String localBaseUrl = 'http://10.4.89.111:8000';
 
   Future<void> _openSmartCamera() async {
     final File? capturedFile = await Navigator.push<File>(
@@ -47,19 +47,19 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Fungsi untuk membuka Virtual Try-On secara bebas
+  // Membuka Virtual Try-On khusus Mode Eksperimen Bebas (bukan Neutral)
   void _openFreeVirtualTryOn() {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => const VirtualTryOnScreen(
-          undertone: 'neutral', // Undertone default untuk eksperimen bebas
+          undertone: 'free_experiment',
+          isFreeExperiment: true,
         ),
       ),
     );
   }
 
-  // Kirim gambar ke VLM API (POST https://api.tonematch.web.id/predict)
   Future<void> _analyzeWithVlmApi(File imageFile) async {
     setState(() => _isAnalyzing = true);
 
@@ -84,11 +84,9 @@ class _HomeScreenState extends State<HomeScreen> {
       final String predClass = (vlmData['pred_class'] ?? 'neutral').toString().toLowerCase();
       final int timeMs = vlmData['time_ms'] ?? 0;
 
-      // Ambil UID pengguna yang sedang aktif
       final prefs = await SharedPreferences.getInstance();
       final String currentUid = prefs.getString('user_uid') ?? 'usr_dummy_01';
 
-      // Simpan hasil riwayat ke database MySQL VPS Anda
       String? savedServerImagePath;
       try {
         final saveReq = http.MultipartRequest('POST', Uri.parse('$localBaseUrl/api/v1/analyze/undertone'));
@@ -265,7 +263,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      // Tombol Baru: Virtual Try-On untuk Eksperimen Bebas Shade/Color
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF4A2333),
@@ -280,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         icon: const Icon(Icons.color_lens_outlined, color: Color(0xFFFFC107)),
                         label: const Text(
                           'Virtual Try-On Makeup',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                       ),
                     ],
