@@ -168,7 +168,9 @@ Agar backend berjalan otomatis dan aktif kembali jika VPS direstart:
 Pastikan alamat IP/Domain backend pada file Flutter Anda sudah disesuaikan dengan IP VPS baru:
 - Contoh pada `home_screen.dart` / `result_screen.dart`:
   ```dart
-  final String localBaseUrl = 'http://IP_VPS_BARU:8000';
+  final String localBaseUrl = 'http://100.116.85.88:8000';
+
+  http://10.4.89.111:8000
   ```
 
 Selesai! VPS baru Anda kini siap melayani permintaan dari aplikasi ToneMatch.
