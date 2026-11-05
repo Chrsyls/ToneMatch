@@ -18,7 +18,7 @@ Masuk ke VPS via SSH, lalu jalankan perintah berikut untuk memperbarui paket sis
 
 ```bash
 sudo apt update && sudo apt upgrade -y
-sudo apt install curl git build-essential ufw nginx python3-pip python3-venv mysql-server -y
+sudo apt install curl git build-essential ufw nginx python3-pip python3-venv mariadb-server -y
 ```
 
 ---
@@ -30,10 +30,10 @@ sudo apt install curl git build-essential ufw nginx python3-pip python3-venv mys
    sudo mysql -u root -p
    ```
 
-2. Jalankan skrip database menggunakan file `database_schema.sql` yang telah disediakan, atau buat secara manual:
+2. Jalankan skrip database menggunakan file `schema.sql` yang telah disediakan, atau buat secara manual:
    ```sql
    CREATE DATABASE IF NOT EXISTS tonematch_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-   CREATE USER 'tonematch_user'@'localhost' IDENTIFIED BY 'password_aman_anda';
+   CREATE USER 'tonematch_user'@'localhost' IDENTIFIED BY 'password123';
    GRANT ALL PRIVILEGES ON tonematch_db.* TO 'tonematch_user'@'localhost';
    FLUSH PRIVILEGES;
    EXIT;
@@ -41,18 +41,19 @@ sudo apt install curl git build-essential ufw nginx python3-pip python3-venv mys
 
 3. Impor skrip tabel:
    ```bash
-   sudo mysql -u root -p tonematch_db < database_schema.sql
+   sudo mysql -u root -p tonematch_db < schema.sql
    ```
 
 ---
 
 ## 🐍 Langkah 3: Setup Backend API (FastAPI / Node.js)
 
-1. Buat direktori aplikasi di VPS (contoh: `/var/www/tonematch-backend`):
+1. Buat direktori aplikasi di VPS (contoh: `/var/www/`):
    ```bash
-   sudo mkdir -p /var/www/tonematch-backend
-   sudo chown -R $USER:$USER /var/www/tonematch-backend
-   cd /var/www/tonematch-backend
+   sudo mkdir -p /var/www/
+   sudo chown -R $USER:$USER /var/www/
+   cd /var/www/
+   git clone https://github.com/Chrsyls/ToneMatch.git /var/www/tonematch
    ```
 
 2. Clone atau salin source code backend Anda ke direktori ini.
@@ -74,7 +75,7 @@ sudo apt install curl git build-essential ufw nginx python3-pip python3-venv mys
    DB_HOST=localhost
    DB_PORT=3306
    DB_USER=tonematch_user
-   DB_PASSWORD=password_aman_anda
+   DB_PASSWORD=password123
    DB_NAME=tonematch_db
    PORT=8000
    ```
@@ -97,9 +98,17 @@ Agar backend berjalan otomatis dan aktif kembali jika VPS direstart:
    After=network.target mysql.service
 
    [Service]
-   User=root
-   WorkingDirectory=/var/www/tonematch-backend
-   ExecStart=/var/www/tonematch-backend/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+   User=wasis
+   Group=www-data
+   # Ubah WorkingDirectory ke dalam subfolder backend
+   WorkingDirectory=/var/www/tonematch/backend
+
+   # Tambahkan Environment PATH agar module dikenali
+   Environment="PATH=/var/www/tonematch/venv/bin"
+
+   # ExecStart tetap memanggil uvicorn dari venv root, tetapi menjalankannya di folder backend
+   ExecStart=/var/www/tonematch/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+
    Restart=always
 
    [Install]
@@ -135,7 +144,7 @@ Agar backend berjalan otomatis dan aktif kembali jika VPS direstart:
    ```nginx
    server {
        listen 80;
-       server_name api.tonematch.web.id; # Ganti dengan domain/IP VPS Anda
+       server_name 100.116.85.88; # Ganti dengan domain/IP VPS Anda
 
        location / {
            proxy_pass http://127.0.0.1:8000;
