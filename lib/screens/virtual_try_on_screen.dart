@@ -35,6 +35,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
   bool _isPanelExpanded = true;
 
   bool _isComparingBefore = false;
+  bool _isMirrorLocked = true;
 
   List _apiProducts = [];
   Map? _matchedProduct;
@@ -70,71 +71,242 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
     {'id': 'eyeliner', 'label': 'Eyeliner'},
   ];
 
+  // Katalog Lengkap Makeup Style / Template Instan (10 - 12 Template per Set/Tone)
   List get _makeupTemplates {
+    String targetTone = widget.undertone.toLowerCase();
     if (_isFreeExperiment) {
       if (_experimentMode == 'warm') {
-        return [
-          {
-            'name': 'Warm Sunset',
-            'icon': Icons.wb_sunny_outlined,
-            'layers': {'lipstick': '#E05A47', 'blush': '#B83B2A', 'foundation': '#E5B88B', 'eyeshadow': '#B55239', 'eyeliner': '#4A3525'}
-          },
-        ];
+        targetTone = 'warm';
       } else if (_experimentMode == 'cool') {
-        return [
-          {
-            'name': 'Berry Chic',
-            'icon': Icons.spa_outlined,
-            'layers': {'lipstick': '#B4002E', 'blush': '#C85A7C', 'foundation': '#ECC4B2', 'eyeshadow': '#8E44AD', 'eyeliner': '#1A1A1A'}
-          },
-        ];
+        targetTone = 'cool';
       } else if (_experimentMode == 'neutral') {
-        return [
-          {
-            'name': 'Natural Neutral',
-            'icon': Icons.face_retouching_natural,
-            'layers': {'lipstick': '#C05C67', 'blush': '#B56B60', 'foundation': '#F4D9C6', 'eyeshadow': '#A84A5C', 'eyeliner': '#33333D'}
-          },
-        ];
+        targetTone = 'neutral';
       } else {
-        return [
-          {
-            'name': 'Natural Glow',
-            'icon': Icons.wb_sunny_outlined,
-            'layers': {'lipstick': '#F4D9C6', 'blush': '#E05A47', 'foundation': '#E2B89A', 'eyeshadow': '#C67B5C', 'eyeliner': '#33333D'}
-          },
-          {
-            'name': 'Bold Glam',
-            'icon': Icons.auto_awesome,
-            'layers': {'lipstick': '#B4002E', 'blush': '#7A1C4B', 'foundation': '#D19C67', 'eyeshadow': '#8E44AD', 'eyeliner': '#1A1A1A'}
-          },
-        ];
+        targetTone = 'all_preset';
       }
     }
 
-    final tone = widget.undertone.toLowerCase();
-    if (tone == 'warm') {
+    if (targetTone == 'warm') {
       return [
         {
           'name': 'Warm Sunset',
           'icon': Icons.wb_sunny_outlined,
-          'layers': {'lipstick': '#E05A47', 'blush': '#B83B2A', 'foundation': '#E5B88B', 'eyeshadow': '#B55239', 'eyeliner': '#4A3525'}
+          'layers': {'lipstick': '#E05A47', 'blush': '#D96B43', 'foundation': '#E5B88B', 'eyeshadow': '#B55239', 'eyeliner': '#4A3525'}
+        },
+        {
+          'name': 'Golden Glow',
+          'icon': Icons.auto_awesome,
+          'layers': {'lipstick': '#C67B5C', 'blush': '#E08A68', 'foundation': '#F3D6B6', 'eyeshadow': '#C68B59', 'eyeliner': '#1A1A1A'}
+        },
+        {
+          'name': 'Peachy Coral',
+          'icon': Icons.local_florist_outlined,
+          'layers': {'lipstick': '#F27961', 'blush': '#F48B72', 'foundation': '#F7E1C6', 'eyeshadow': '#D97B59', 'eyeliner': '#5C3A21'}
+        },
+        {
+          'name': 'Honey Bronze',
+          'icon': Icons.flare_rounded,
+          'layers': {'lipstick': '#A8422B', 'blush': '#C46243', 'foundation': '#D19C67', 'eyeshadow': '#8F4728', 'eyeliner': '#4A3525'}
+        },
+        {
+          'name': 'Spiced Autumn',
+          'icon': Icons.park_outlined,
+          'layers': {'lipstick': '#9E2A2B', 'blush': '#B83B2A', 'foundation': '#DCAC80', 'eyeshadow': '#7D3522', 'eyeliner': '#1A1A1A'}
+        },
+        {
+          'name': 'Terracotta Goddess',
+          'icon': Icons.terrain_rounded,
+          'layers': {'lipstick': '#B83B2A', 'blush': '#C85A32', 'foundation': '#E5B88B', 'eyeshadow': '#9E4732', 'eyeliner': '#4A3525'}
+        },
+        {
+          'name': 'Caramel Latte',
+          'icon': Icons.coffee_rounded,
+          'layers': {'lipstick': '#B86A50', 'blush': '#C67B5C', 'foundation': '#EDD0AA', 'eyeshadow': '#8D4E3F', 'eyeliner': '#5C3A21'}
+        },
+        {
+          'name': 'Marrakech Spice',
+          'icon': Icons.whatshot_outlined,
+          'layers': {'lipstick': '#8C1D18', 'blush': '#A84A38', 'foundation': '#C68A53', 'eyeshadow': '#7D2818', 'eyeliner': '#1A1A1A'}
+        },
+        {
+          'name': 'Sunlit Apricot',
+          'icon': Icons.wb_twilight_rounded,
+          'layers': {'lipstick': '#EB6A53', 'blush': '#F4977E', 'foundation': '#F3D6B6', 'eyeshadow': '#D48B6A', 'eyeliner': '#6E473B'}
+        },
+        {
+          'name': 'Cinnamon Chai',
+          'icon': Icons.emoji_food_beverage_outlined,
+          'layers': {'lipstick': '#9E4732', 'blush': '#B55239', 'foundation': '#DCAC80', 'eyeshadow': '#6E3522', 'eyeliner': '#4A3525'}
         },
       ];
-    } else if (tone == 'cool') {
+    } else if (targetTone == 'cool') {
       return [
         {
           'name': 'Berry Chic',
           'icon': Icons.spa_outlined,
           'layers': {'lipstick': '#B4002E', 'blush': '#C85A7C', 'foundation': '#ECC4B2', 'eyeshadow': '#8E44AD', 'eyeliner': '#1A1A1A'}
         },
+        {
+          'name': 'Cool Mauve',
+          'icon': Icons.ac_unit,
+          'layers': {'lipstick': '#7A1C4B', 'blush': '#B95C82', 'foundation': '#F7DFD4', 'eyeshadow': '#7D4E6D', 'eyeliner': '#33333D'}
+        },
+        {
+          'name': 'Plum Fairy',
+          'icon': Icons.auto_fix_high_rounded,
+          'layers': {'lipstick': '#8E2457', 'blush': '#E06C9F', 'foundation': '#FCE8E1', 'eyeshadow': '#9B59B6', 'eyeliner': '#4A1A4B'}
+        },
+        {
+          'name': 'Icy Rose',
+          'icon': Icons.diamond_outlined,
+          'layers': {'lipstick': '#D94E78', 'blush': '#F08CAE', 'foundation': '#E5B8A8', 'eyeshadow': '#A36A8E', 'eyeliner': '#1B2845'}
+        },
+        {
+          'name': 'Vampy Wine',
+          'icon': Icons.wine_bar_rounded,
+          'layers': {'lipstick': '#590822', 'blush': '#9E2A5B', 'foundation': '#D8A590', 'eyeshadow': '#522146', 'eyeliner': '#1A1A1A'}
+        },
+        {
+          'name': 'Cherry Blossom',
+          'icon': Icons.filter_vintage_outlined,
+          'layers': {'lipstick': '#E35D82', 'blush': '#F285A2', 'foundation': '#FCE8E1', 'eyeshadow': '#D48BA8', 'eyeliner': '#5A1A32'}
+        },
+        {
+          'name': 'Lavender Frost',
+          'icon': Icons.cloud_outlined,
+          'layers': {'lipstick': '#A34878', 'blush': '#C97AA6', 'foundation': '#F2D2C4', 'eyeshadow': '#8E6A9E', 'eyeliner': '#33333D'}
+        },
+        {
+          'name': 'Cranberry Luxe',
+          'icon': Icons.celebration_outlined,
+          'layers': {'lipstick': '#9E143B', 'blush': '#C2466D', 'foundation': '#ECC4B2', 'eyeshadow': '#7A284B', 'eyeliner': '#1A1A1A'}
+        },
+        {
+          'name': 'Midnight Siren',
+          'icon': Icons.nights_stay_outlined,
+          'layers': {'lipstick': '#6B0F2B', 'blush': '#8E2457', 'foundation': '#D8A590', 'eyeshadow': '#3D1430', 'eyeliner': '#1B2845'}
+        },
+        {
+          'name': 'Rose Quartz',
+          'icon': Icons.favorite_border_rounded,
+          'layers': {'lipstick': '#C85A7C', 'blush': '#E888A6', 'foundation': '#F7DFD4', 'eyeshadow': '#B5728D', 'eyeliner': '#4A1A4B'}
+        },
       ];
-    } else {
+    } else if (targetTone == 'neutral') {
       return [
         {
           'name': 'Natural Neutral',
           'icon': Icons.face_retouching_natural,
           'layers': {'lipstick': '#C05C67', 'blush': '#B56B60', 'foundation': '#F4D9C6', 'eyeshadow': '#A84A5C', 'eyeliner': '#33333D'}
+        },
+        {
+          'name': 'Soft Rosewood',
+          'icon': Icons.auto_awesome,
+          'layers': {'lipstick': '#8F2D38', 'blush': '#C46D6E', 'foundation': '#E2B89A', 'eyeshadow': '#8D4E3F', 'eyeliner': '#1A1A1A'}
+        },
+        {
+          'name': 'Everyday MLBB',
+          'icon': Icons.favorite_border_rounded,
+          'layers': {'lipstick': '#C86D73', 'blush': '#D97E82', 'foundation': '#FAE3D4', 'eyeshadow': '#A66F65', 'eyeliner': '#4A3525'}
+        },
+        {
+          'name': 'Velvet Mocha',
+          'icon': Icons.coffee_outlined,
+          'layers': {'lipstick': '#7A3E37', 'blush': '#A65E54', 'foundation': '#CCA07C', 'eyeshadow': '#6E453B', 'eyeliner': '#1A1A1A'}
+        },
+        {
+          'name': 'Coral Cashmere',
+          'icon': Icons.wb_twilight_rounded,
+          'layers': {'lipstick': '#D9534F', 'blush': '#E2726E', 'foundation': '#EBCAB3', 'eyeshadow': '#9C5B53', 'eyeliner': '#33333D'}
+        },
+        {
+          'name': 'Dusty Peony',
+          'icon': Icons.local_florist_outlined,
+          'layers': {'lipstick': '#B85A65', 'blush': '#CF767E', 'foundation': '#F4D9C6', 'eyeshadow': '#9E5E66', 'eyeliner': '#5A1A32'}
+        },
+        {
+          'name': 'Toasted Almond',
+          'icon': Icons.grain_rounded,
+          'layers': {'lipstick': '#9C5349', 'blush': '#B06A5E', 'foundation': '#D7AD8E', 'eyeshadow': '#855247', 'eyeliner': '#4A3525'}
+        },
+        {
+          'name': 'Cashmere Rose',
+          'icon': Icons.spa_outlined,
+          'layers': {'lipstick': '#AD4C58', 'blush': '#C46D76', 'foundation': '#EBCAB3', 'eyeshadow': '#8E595E', 'eyeliner': '#33333D'}
+        },
+        {
+          'name': 'Truffle Glam',
+          'icon': Icons.star_border_rounded,
+          'layers': {'lipstick': '#6E302B', 'blush': '#964B54', 'foundation': '#B07F59', 'eyeshadow': '#47302B', 'eyeliner': '#1A1A1A'}
+        },
+        {
+          'name': 'Vintage Nude',
+          'icon': Icons.camera_enhance_outlined,
+          'layers': {'lipstick': '#B56B60', 'blush': '#C98279', 'foundation': '#E2B89A', 'eyeshadow': '#94675E', 'eyeliner': '#4A3525'}
+        },
+      ];
+    } else {
+      // Auto Preset / Eksperimen Bebas (12 Template)
+      return [
+        {
+          'name': 'Natural Glow',
+          'icon': Icons.wb_sunny_outlined,
+          'layers': {'lipstick': '#C86D73', 'blush': '#E07A68', 'foundation': '#E2B89A', 'eyeshadow': '#C67B5C', 'eyeliner': '#33333D'}
+        },
+        {
+          'name': 'Bold Glam',
+          'icon': Icons.auto_awesome,
+          'layers': {'lipstick': '#B4002E', 'blush': '#A83B5E', 'foundation': '#D19C67', 'eyeshadow': '#7A3B5E', 'eyeliner': '#1A1A1A'}
+        },
+        {
+          'name': 'K-Beauty Douyin',
+          'icon': Icons.favorite_rounded,
+          'layers': {'lipstick': '#E34A6F', 'blush': '#F285A2', 'foundation': '#F7DFD4', 'eyeshadow': '#D47A92', 'eyeliner': '#4A3525'}
+        },
+        {
+          'name': 'Latte Makeup',
+          'icon': Icons.coffee_rounded,
+          'layers': {'lipstick': '#9E5842', 'blush': '#B86A50', 'foundation': '#DCAC80', 'eyeshadow': '#7D4832', 'eyeliner': '#4A3525'}
+        },
+        {
+          'name': 'Sunkissed Igari',
+          'icon': Icons.flare_rounded,
+          'layers': {'lipstick': '#E05A47', 'blush': '#EA6A57', 'foundation': '#F3D6B6', 'eyeshadow': '#C96A50', 'eyeliner': '#5A1A32'}
+        },
+        {
+          'name': 'Soft Goth',
+          'icon': Icons.nights_stay_outlined,
+          'layers': {'lipstick': '#590822', 'blush': '#8C3B54', 'foundation': '#ECC4B2', 'eyeshadow': '#4D2C4D', 'eyeliner': '#1A1A1A'}
+        },
+        {
+          'name': 'Clean Girl',
+          'icon': Icons.water_drop_outlined,
+          'layers': {'lipstick': '#D47A7E', 'blush': '#E89296', 'foundation': '#F4D9C6', 'eyeshadow': '#C48B84', 'eyeliner': '#5C3A21'}
+        },
+        {
+          'name': 'Mob Wife Glam',
+          'icon': Icons.diamond_outlined,
+          'layers': {'lipstick': '#8C1D18', 'blush': '#A65E54', 'foundation': '#D7AD8E', 'eyeshadow': '#5E4B4E', 'eyeliner': '#1A1A1A'}
+        },
+        {
+          'name': 'Balletcore Pink',
+          'icon': Icons.spa_outlined,
+          'layers': {'lipstick': '#D95B82', 'blush': '#F08CAE', 'foundation': '#FCE8E1', 'eyeshadow': '#E8B4C8', 'eyeliner': '#4A3525'}
+        },
+        {
+          'name': 'Sunset Cocktail',
+          'icon': Icons.local_bar_outlined,
+          'layers': {'lipstick': '#E8523A', 'blush': '#F48B72', 'foundation': '#E5B88B', 'eyeshadow': '#AD5D3B', 'eyeliner': '#4A3525'}
+        },
+        {
+          'name': 'Espresso Martini',
+          'icon': Icons.wine_bar_rounded,
+          'layers': {'lipstick': '#7A3E37', 'blush': '#9C5B53', 'foundation': '#CCA07C', 'eyeshadow': '#542A1C', 'eyeliner': '#1A1A1A'}
+        },
+        {
+          'name': 'Glass Skin Coral',
+          'icon': Icons.auto_fix_high_rounded,
+          'layers': {'lipstick': '#F27961', 'blush': '#F48B72', 'foundation': '#F7E1C6', 'eyeshadow': '#E28B6B', 'eyeliner': '#6E473B'}
         },
       ];
     }
@@ -216,7 +388,9 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
   Map _getFallbackProductForCategory() {
     final String shadeName = _getCurrentShadeName();
     final String activeTone = _isFreeExperiment
-        ? (_experimentMode == 'warm' || _experimentMode == 'cool' || _experimentMode == 'neutral' ? _experimentMode.toUpperCase() : 'ALL TONE')
+        ? (_experimentMode == 'warm' || _experimentMode == 'cool' || _experimentMode == 'neutral'
+            ? _experimentMode.toUpperCase()
+            : 'ALL TONE')
         : widget.undertone.toUpperCase();
 
     if (_selectedCategory == 'lipstick') {
@@ -607,6 +781,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
         .toUpperCase();
   }
 
+  // Katalog Palet Warna Ekstra Lengkap per Kategori & Undertone (14 - 24 Shades)
   List _getPalettesForCategory(String category) {
     if (_isFreeExperiment && _experimentMode == 'custom') {
       final customHex = _rgbToHex(_customRed.toInt(), _customGreen.toInt(), _customBlue.toInt());
@@ -623,102 +798,371 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
       if (_experimentMode == 'preset') effectiveTone = 'all_preset';
     }
 
+    // 1. KATEGORI FOUNDATION (14 - 20 Shade)
     if (category == 'foundation') {
       if (effectiveTone == 'warm') {
         return [
+          {'name': 'Warm Alabaster', 'hex': '#FBF0D9'},
+          {'name': 'Warm Porcelain', 'hex': '#F7E1C6'},
+          {'name': 'Soft Cream', 'hex': '#F5DCB8'},
           {'name': 'Warm Ivory', 'hex': '#F3D6B6'},
+          {'name': 'Golden Butter', 'hex': '#EDD0AA'},
+          {'name': 'Warm Vanilla', 'hex': '#E9C49B'},
           {'name': 'Golden Beige', 'hex': '#E5B88B'},
+          {'name': 'Sunlit Sand', 'hex': '#DCAC80'},
+          {'name': 'Honey Ochre', 'hex': '#D6A473'},
           {'name': 'Warm Honey', 'hex': '#D19C67'},
+          {'name': 'Golden Amber', 'hex': '#C68A53'},
           {'name': 'Warm Tan', 'hex': '#B87D4B'},
+          {'name': 'Toasted Bronze', 'hex': '#A66D3F'},
+          {'name': 'Warm Cinnamon', 'hex': '#915B32'},
         ];
       } else if (effectiveTone == 'cool') {
         return [
+          {'name': 'Pearl Ivory', 'hex': '#FDF0EC'},
+          {'name': 'Cool Alabaster', 'hex': '#FCE8E1'},
           {'name': 'Porcelain Rose', 'hex': '#F7DFD4'},
+          {'name': 'Rosy Silk', 'hex': '#F5D8CC'},
+          {'name': 'Pink Petal', 'hex': '#F2D2C4'},
           {'name': 'Cool Vanilla', 'hex': '#ECC4B2'},
+          {'name': 'Shell Beige', 'hex': '#E5B8A8'},
+          {'name': 'Cool Bisque', 'hex': '#DFB09E'},
           {'name': 'Rose Beige', 'hex': '#D8A590'},
+          {'name': 'Fawn Rose', 'hex': '#CA947F'},
           {'name': 'Cool Almond', 'hex': '#BC846E'},
+          {'name': 'Chestnut Rose', 'hex': '#B07762'},
+          {'name': 'Rose Cocoa', 'hex': '#A36B56'},
+          {'name': 'Deep Espresso', 'hex': '#8C5642'},
         ];
       } else if (effectiveTone == 'neutral') {
         return [
+          {'name': 'Cloud Ivory', 'hex': '#FCF0E6'},
+          {'name': 'Pure Linen', 'hex': '#FAE3D4'},
           {'name': 'Natural Ivory', 'hex': '#F4D9C6'},
+          {'name': 'Chiffon Nude', 'hex': '#F0D1BC'},
+          {'name': 'Soft Buff', 'hex': '#EBCAB3'},
           {'name': 'Neutral Beige', 'hex': '#E2B89A'},
+          {'name': 'Cashew Nude', 'hex': '#DCB294'},
+          {'name': 'Nude Bisque', 'hex': '#D7AD8E'},
           {'name': 'Medium Sand', 'hex': '#CCA07C'},
+          {'name': 'Toasted Hazelnut', 'hex': '#BE8F6B'},
           {'name': 'Neutral Caramel', 'hex': '#B07F59'},
-        ];
-      } else if (effectiveTone == 'all_preset') {
-        return [
-          {'name': 'Warm Ivory', 'hex': '#F3D6B6'},
-          {'name': 'Porcelain Rose', 'hex': '#F7DFD4'},
-          {'name': 'Neutral Beige', 'hex': '#E2B89A'},
-          {'name': 'Golden Beige', 'hex': '#E5B88B'},
-          {'name': 'Cool Vanilla', 'hex': '#ECC4B2'},
-          {'name': 'Warm Tan', 'hex': '#B87D4B'},
+          {'name': 'Rich Pecan', 'hex': '#996845'},
+          {'name': 'Mocha Truffle', 'hex': '#87593A'},
+          {'name': 'Deep Walnut', 'hex': '#73482D'},
         ];
       } else {
+        // All Preset (20 Shade Lengkap)
         return [
+          {'name': 'Pearl Ivory', 'hex': '#FDF0EC'},
+          {'name': 'Warm Alabaster', 'hex': '#FBF0D9'},
+          {'name': 'Cool Alabaster', 'hex': '#FCE8E1'},
+          {'name': 'Pure Linen', 'hex': '#FAE3D4'},
+          {'name': 'Warm Ivory', 'hex': '#F3D6B6'},
+          {'name': 'Porcelain Rose', 'hex': '#F7DFD4'},
           {'name': 'Natural Ivory', 'hex': '#F4D9C6'},
+          {'name': 'Golden Butter', 'hex': '#EDD0AA'},
+          {'name': 'Pink Petal', 'hex': '#F2D2C4'},
+          {'name': 'Soft Buff', 'hex': '#EBCAB3'},
+          {'name': 'Golden Beige', 'hex': '#E5B88B'},
+          {'name': 'Cool Vanilla', 'hex': '#ECC4B2'},
           {'name': 'Neutral Beige', 'hex': '#E2B89A'},
+          {'name': 'Sunlit Sand', 'hex': '#DCAC80'},
+          {'name': 'Warm Honey', 'hex': '#D19C67'},
+          {'name': 'Rose Beige', 'hex': '#D8A590'},
           {'name': 'Medium Sand', 'hex': '#CCA07C'},
-          {'name': 'Neutral Caramel', 'hex': '#B07F59'},
+          {'name': 'Warm Tan', 'hex': '#B87D4B'},
+          {'name': 'Cool Almond', 'hex': '#BC846E'},
+          {'name': 'Rich Pecan', 'hex': '#996845'},
         ];
       }
     }
 
+    // 2. KATEGORI EYELINER (16 Shade Lengkap)
     if (category == 'eyeliner') {
       return [
         {'name': 'Jet Black', 'hex': '#1A1A1A'},
+        {'name': 'Carbon Matte', 'hex': '#262626'},
         {'name': 'Espresso', 'hex': '#4A3525'},
+        {'name': 'Cocoa Brown', 'hex': '#5C3A21'},
+        {'name': 'Warm Taupe', 'hex': '#6E473B'},
+        {'name': 'Bronze Copper', 'hex': '#8C5230'},
         {'name': 'Charcoal', 'hex': '#33333D'},
+        {'name': 'Graphite Grey', 'hex': '#4E515C'},
         {'name': 'Burgundy', 'hex': '#5A1A32'},
+        {'name': 'Berry Liner', 'hex': '#781E42'},
+        {'name': 'Deep Plum', 'hex': '#4A1A4B'},
+        {'name': 'Midnight Navy', 'hex': '#1B2845'},
+        {'name': 'Royal Sapphire', 'hex': '#1F3B73'},
+        {'name': 'Forest Emerald', 'hex': '#1E3F2D'},
+        {'name': 'Olive Gold', 'hex': '#54522B'},
+        {'name': 'Champagne Glow', 'hex': '#E5C39C'},
       ];
     }
 
+    // 3. KATEGORI EYESHADOW (16 - 20 Shade Spesifik)
+    if (category == 'eyeshadow') {
+      if (effectiveTone == 'warm') {
+        return [
+          {'name': 'Vanilla Gold', 'hex': '#F2DCB3'},
+          {'name': 'Champagne Gold', 'hex': '#E5C39C'},
+          {'name': 'Sunlit Amber', 'hex': '#E0A96D'},
+          {'name': 'Peach Shimmer', 'hex': '#E28B6B'},
+          {'name': 'Apricot Silk', 'hex': '#D48B6A'},
+          {'name': 'Honey Mustard', 'hex': '#C68B59'},
+          {'name': 'Warm Bronze', 'hex': '#B56B45'},
+          {'name': 'Copper Penny', 'hex': '#AD5D3B'},
+          {'name': 'Cinnamon Spice', 'hex': '#B55239'},
+          {'name': 'Ginger Rust', 'hex': '#A84A32'},
+          {'name': 'Terracotta Clay', 'hex': '#9E4732'},
+          {'name': 'Rustic Orange', 'hex': '#8F4728'},
+          {'name': 'Sienna Earth', 'hex': '#823D24'},
+          {'name': 'Warm Mocha', 'hex': '#7D3522'},
+          {'name': 'Olive Bronze', 'hex': '#6E5C38'},
+          {'name': 'Dark Espresso', 'hex': '#542A1C'},
+        ];
+      } else if (effectiveTone == 'cool') {
+        return [
+          {'name': 'Frosty Pearl', 'hex': '#F2E6EE'},
+          {'name': 'Icy Pink', 'hex': '#E8B4C8'},
+          {'name': 'Lilac Mist', 'hex': '#D6A8DF'},
+          {'name': 'Rose Quartz', 'hex': '#D48BA8'},
+          {'name': 'Ballet Mauve', 'hex': '#B5728D'},
+          {'name': 'Orchid Haze', 'hex': '#A36A8E'},
+          {'name': 'Cool Lilac', 'hex': '#9B59B6'},
+          {'name': 'Dusty Lavender', 'hex': '#8E6A9E'},
+          {'name': 'Mauve Taupe', 'hex': '#7D4E6D'},
+          {'name': 'Amethyst', 'hex': '#8E44AD'},
+          {'name': 'Plum Velvet', 'hex': '#753B7A'},
+          {'name': 'Berry Wine', 'hex': '#7A284B'},
+          {'name': 'Smoky Plum', 'hex': '#522146'},
+          {'name': 'Silver Slate', 'hex': '#6E7382'},
+          {'name': 'Ocean Twilight', 'hex': '#3E4E6C'},
+          {'name': 'Midnight Berry', 'hex': '#3D1430'},
+        ];
+      } else if (effectiveTone == 'neutral') {
+        return [
+          {'name': 'Ivory Satin', 'hex': '#EBDDD4'},
+          {'name': 'Soft Cashmere', 'hex': '#D8B4A0'},
+          {'name': 'Champagne Rose', 'hex': '#D9A99A'},
+          {'name': 'Nude Rose', 'hex': '#C48B84'},
+          {'name': 'Blush Taupe', 'hex': '#B5827A'},
+          {'name': 'Taupe Silk', 'hex': '#A66F65'},
+          {'name': 'Dusty Cedar', 'hex': '#9E5E66'},
+          {'name': 'Rosewood', 'hex': '#A84A5C'},
+          {'name': 'Toasted Almond', 'hex': '#9C5B53'},
+          {'name': 'Vintage Mink', 'hex': '#94675E'},
+          {'name': 'Choco Latte', 'hex': '#8D4E3F'},
+          {'name': 'Muted Mauve', 'hex': '#82525E'},
+          {'name': 'Hazelnut Cocoa', 'hex': '#785046'},
+          {'name': 'Velvet Cocoa', 'hex': '#6E453B'},
+          {'name': 'Smoky Quartz', 'hex': '#5E4B4E'},
+          {'name': 'Dark Truffle', 'hex': '#47302B'},
+        ];
+      } else {
+        // All Preset (20 Shade Lengkap)
+        return [
+          {'name': 'Champagne Gold', 'hex': '#E5C39C'},
+          {'name': 'Icy Pink', 'hex': '#E8B4C8'},
+          {'name': 'Soft Cashmere', 'hex': '#D8B4A0'},
+          {'name': 'Rose Quartz', 'hex': '#D48BA8'},
+          {'name': 'Peach Shimmer', 'hex': '#E28B6B'},
+          {'name': 'Cool Lilac', 'hex': '#9B59B6'},
+          {'name': 'Nude Rose', 'hex': '#C48B84'},
+          {'name': 'Honey Mustard', 'hex': '#C68B59'},
+          {'name': 'Dusty Lavender', 'hex': '#8E6A9E'},
+          {'name': 'Taupe Silk', 'hex': '#A66F65'},
+          {'name': 'Cinnamon Spice', 'hex': '#B55239'},
+          {'name': 'Amethyst', 'hex': '#8E44AD'},
+          {'name': 'Rosewood', 'hex': '#A84A5C'},
+          {'name': 'Copper Penny', 'hex': '#AD5D3B'},
+          {'name': 'Berry Wine', 'hex': '#7A284B'},
+          {'name': 'Choco Latte', 'hex': '#8D4E3F'},
+          {'name': 'Terracotta', 'hex': '#9E4732'},
+          {'name': 'Smoky Plum', 'hex': '#522146'},
+          {'name': 'Velvet Cocoa', 'hex': '#6E453B'},
+          {'name': 'Silver Slate', 'hex': '#6E7382'},
+        ];
+      }
+    }
+
+    // 4. KATEGORI BLUSH (16 - 20 Shade)
+    if (category == 'blush') {
+      if (effectiveTone == 'warm') {
+        return [
+          {'name': 'Sunlit Nectar', 'hex': '#F79D84'},
+          {'name': 'Apricot Nectar', 'hex': '#F48B72'},
+          {'name': 'Papaya Sorbet', 'hex': '#F27D5E'},
+          {'name': 'Peach Coral', 'hex': '#E05A47'},
+          {'name': 'Tangerine Pop', 'hex': '#E86842'},
+          {'name': 'Coral Reef', 'hex': '#EA6A57'},
+          {'name': 'Warm Guava', 'hex': '#E07A68'},
+          {'name': 'Honey Peach', 'hex': '#E08A68'},
+          {'name': 'Sunlit Terracotta', 'hex': '#D96B43'},
+          {'name': 'Persimmon', 'hex': '#C85A32'},
+          {'name': 'Ginger Peach', 'hex': '#C46243'},
+          {'name': 'Cinnamon Flush', 'hex': '#B83B2A'},
+          {'name': 'Golden Bronze', 'hex': '#C67B5C'},
+          {'name': 'Caramel Rose', 'hex': '#B86A50'},
+          {'name': 'Spiced Chai', 'hex': '#A84A38'},
+          {'name': 'Toasted Almond', 'hex': '#9E4732'},
+        ];
+      } else if (effectiveTone == 'cool') {
+        return [
+          {'name': 'Sakura Pink', 'hex': '#F7A1BA'},
+          {'name': 'Baby Doll Pink', 'hex': '#F285A2'},
+          {'name': 'Icy Petals', 'hex': '#F08CAE'},
+          {'name': 'Bubblegum Pop', 'hex': '#EB6A9A'},
+          {'name': 'Cotton Candy', 'hex': '#E06C9F'},
+          {'name': 'Pink Flamingo', 'hex': '#DE5488'},
+          {'name': 'Mauve Pink', 'hex': '#C85A7C'},
+          {'name': 'Lavender Flush', 'hex': '#C97AA6'},
+          {'name': 'Rose Berry', 'hex': '#B95C82'},
+          {'name': 'Fuchsia Flush', 'hex': '#D81B60'},
+          {'name': 'Raspberry Tart', 'hex': '#C2466D'},
+          {'name': 'Plum Sorbet', 'hex': '#A83B5E'},
+          {'name': 'Cool Mulberry', 'hex': '#9E2A5B'},
+          {'name': 'Wild Orchid', 'hex': '#8E44AD'},
+          {'name': 'Blackberry Wine', 'hex': '#821D48'},
+          {'name': 'Sangria Wine', 'hex': '#7A1C4B'},
+        ];
+      } else if (effectiveTone == 'neutral') {
+        return [
+          {'name': 'Cashmere Pink', 'hex': '#E89296'},
+          {'name': 'Soft Peony', 'hex': '#E2726E'},
+          {'name': 'Blushing Nude', 'hex': '#D97E82'},
+          {'name': 'Tea Rose', 'hex': '#CF767E'},
+          {'name': 'Dusty Rose', 'hex': '#C05C67'},
+          {'name': 'Rosewood Flush', 'hex': '#C46D6E'},
+          {'name': 'Petal Mauve', 'hex': '#C46D76'},
+          {'name': 'Vintage Rose', 'hex': '#C98279'},
+          {'name': 'Classic Nude', 'hex': '#B56B60'},
+          {'name': 'Toasted Rose', 'hex': '#B06A5E'},
+          {'name': 'Soft Mauve', 'hex': '#A84A5C'},
+          {'name': 'Coral Cashmere', 'hex': '#D9534F'},
+          {'name': 'Warm Fig', 'hex': '#A65E54'},
+          {'name': 'Desert Rose', 'hex': '#964B54'},
+          {'name': 'Plum Woods', 'hex': '#8C3B54'},
+          {'name': 'Berry Nude', 'hex': '#8F2D38'},
+        ];
+      } else {
+        // All Preset (20 Shade Lengkap)
+        return [
+          {'name': 'Apricot Nectar', 'hex': '#F48B72'},
+          {'name': 'Baby Doll Pink', 'hex': '#F285A2'},
+          {'name': 'Soft Peony', 'hex': '#E2726E'},
+          {'name': 'Peach Coral', 'hex': '#E05A47'},
+          {'name': 'Cotton Candy', 'hex': '#E06C9F'},
+          {'name': 'Blushing Nude', 'hex': '#D97E82'},
+          {'name': 'Tangerine Pop', 'hex': '#E86842'},
+          {'name': 'Mauve Pink', 'hex': '#C85A7C'},
+          {'name': 'Dusty Rose', 'hex': '#C05C67'},
+          {'name': 'Warm Guava', 'hex': '#E07A68'},
+          {'name': 'Rose Berry', 'hex': '#B95C82'},
+          {'name': 'Classic Nude', 'hex': '#B56B60'},
+          {'name': 'Sunlit Terracotta', 'hex': '#D96B43'},
+          {'name': 'Fuchsia Flush', 'hex': '#D81B60'},
+          {'name': 'Soft Mauve', 'hex': '#A84A5C'},
+          {'name': 'Cinnamon Flush', 'hex': '#B83B2A'},
+          {'name': 'Plum Sorbet', 'hex': '#A83B5E'},
+          {'name': 'Coral Cashmere', 'hex': '#D9534F'},
+          {'name': 'Golden Bronze', 'hex': '#C67B5C'},
+          {'name': 'Sangria Wine', 'hex': '#7A1C4B'},
+        ];
+      }
+    }
+
+    // 5. KATEGORI LIPSTICK (18 - 24 Shade Lengkap)
     if (effectiveTone == 'warm') {
       return [
+        {'name': 'Apricot Nude', 'hex': '#F48B72'},
+        {'name': 'Peachy Nude', 'hex': '#F27961'},
+        {'name': 'Sunlit Coral', 'hex': '#EB6A53'},
         {'name': 'Peach Coral', 'hex': '#E05A47'},
-        {'name': 'Terracotta', 'hex': '#B83B2A'},
-        {'name': 'Spiced Brick', 'hex': '#9E2A2B'},
+        {'name': 'Papaya Punch', 'hex': '#E8523A'},
+        {'name': 'Warm Honey', 'hex': '#D97B59'},
+        {'name': 'Bronze Sunset', 'hex': '#D47A45'},
         {'name': 'Warm Nude', 'hex': '#C67B5C'},
+        {'name': 'Caramel Latte', 'hex': '#B86A50'},
+        {'name': 'Butterscotch', 'hex': '#C46238'},
         {'name': 'Cinnamon', 'hex': '#B55239'},
-        {'name': 'Bronze', 'hex': '#D47A45'},
+        {'name': 'Ginger Spice', 'hex': '#AD4628'},
+        {'name': 'Terracotta', 'hex': '#B83B2A'},
+        {'name': 'Pumpkin Spice', 'hex': '#A8422B'},
+        {'name': 'Spiced Brick', 'hex': '#9E2A2B'},
+        {'name': 'Maple Rust', 'hex': '#96301E'},
+        {'name': 'Chili Pepper', 'hex': '#8C1D18'},
+        {'name': 'Roasted Espresso', 'hex': '#6E2418'},
       ];
     } else if (effectiveTone == 'cool') {
       return [
-        {'name': 'Berry Rose', 'hex': '#B4002E'},
+        {'name': 'Ballet Slipper', 'hex': '#F08CAE'},
+        {'name': 'Cherry Blossom', 'hex': '#E35D82'},
+        {'name': 'Rosy Pink', 'hex': '#D94E78'},
         {'name': 'Mauve Pink', 'hex': '#C85A7C'},
-        {'name': 'Cherry Plum', 'hex': '#7A1C4B'},
-        {'name': 'Fuchsia', 'hex': '#D81B60'},
+        {'name': 'Orchid Rose', 'hex': '#C24676'},
+        {'name': 'Strawberry Pop', 'hex': '#E34A6F'},
+        {'name': 'Fuchsia Pop', 'hex': '#D81B60'},
+        {'name': 'Magenta Berry', 'hex': '#B51756'},
+        {'name': 'Berry Rose', 'hex': '#B4002E'},
+        {'name': 'Cranberry Crush', 'hex': '#9E143B'},
+        {'name': 'Lavender Mauve', 'hex': '#A34878'},
         {'name': 'Cool Lilac', 'hex': '#8E44AD'},
-        {'name': 'Wine', 'hex': '#6B0F2B'},
+        {'name': 'Plum Velvet', 'hex': '#8E2457'},
+        {'name': 'Mulberry Silk', 'hex': '#82184B'},
+        {'name': 'Cherry Plum', 'hex': '#7A1C4B'},
+        {'name': 'Deep Wine', 'hex': '#6B0F2B'},
+        {'name': 'Vampy Maroon', 'hex': '#590822'},
+        {'name': 'Blackberry Night', 'hex': '#42061B'},
       ];
     } else if (effectiveTone == 'neutral') {
       return [
+        {'name': 'Nude Cashmere', 'hex': '#D98284'},
+        {'name': 'Tea Rose', 'hex': '#D47A7E'},
+        {'name': 'Blush Petal', 'hex': '#C86D73'},
         {'name': 'Dusty Rose', 'hex': '#C05C67'},
+        {'name': 'Peony Mauve', 'hex': '#B85A65'},
         {'name': 'Classic Nude', 'hex': '#B56B60'},
         {'name': 'Soft Mauve', 'hex': '#A84A5C'},
+        {'name': 'Velvet Fig', 'hex': '#AD4C58'},
+        {'name': 'Coral Crush', 'hex': '#D9534F'},
+        {'name': 'Toasted Almond', 'hex': '#9C5349'},
+        {'name': 'Cinnamon Rose', 'hex': '#9E5842'},
         {'name': 'Rosewood', 'hex': '#8F2D38'},
-        {'name': 'Coral', 'hex': '#D9534F'},
         {'name': 'Choco Latte', 'hex': '#8D4E3F'},
-      ];
-    } else if (effectiveTone == 'all_preset') {
-      return [
-        {'name': 'Peach Coral', 'hex': '#E05A47'},
-        {'name': 'Berry Rose', 'hex': '#B4002E'},
-        {'name': 'Dusty Rose', 'hex': '#C05C67'},
-        {'name': 'Terracotta', 'hex': '#B83B2A'},
-        {'name': 'Mauve Pink', 'hex': '#C85A7C'},
-        {'name': 'Classic Nude', 'hex': '#B56B60'},
-        {'name': 'Fuchsia', 'hex': '#D81B60'},
-        {'name': 'Choco Latte', 'hex': '#8D4E3F'},
+        {'name': 'Mocha Truffle', 'hex': '#7A3E37'},
+        {'name': 'Crimson Ruby', 'hex': '#9E1B2B'},
+        {'name': 'Red Velvet', 'hex': '#871824'},
+        {'name': 'Brick Velvet', 'hex': '#73242B'},
+        {'name': 'Dark Cocoa', 'hex': '#5E2420'},
       ];
     } else {
+      // All Preset (24 Shade Lengkap)
       return [
+        {'name': 'Peachy Nude', 'hex': '#F27961'},
+        {'name': 'Cherry Blossom', 'hex': '#E35D82'},
+        {'name': 'Blush Petal', 'hex': '#C86D73'},
+        {'name': 'Peach Coral', 'hex': '#E05A47'},
+        {'name': 'Rosy Pink', 'hex': '#D94E78'},
         {'name': 'Dusty Rose', 'hex': '#C05C67'},
+        {'name': 'Papaya Punch', 'hex': '#E8523A'},
+        {'name': 'Mauve Pink', 'hex': '#C85A7C'},
         {'name': 'Classic Nude', 'hex': '#B56B60'},
+        {'name': 'Warm Nude', 'hex': '#C67B5C'},
+        {'name': 'Fuchsia Pop', 'hex': '#D81B60'},
         {'name': 'Soft Mauve', 'hex': '#A84A5C'},
+        {'name': 'Caramel Latte', 'hex': '#B86A50'},
+        {'name': 'Magenta Berry', 'hex': '#B51756'},
+        {'name': 'Coral Crush', 'hex': '#D9534F'},
+        {'name': 'Cinnamon', 'hex': '#B55239'},
+        {'name': 'Berry Rose', 'hex': '#B4002E'},
         {'name': 'Rosewood', 'hex': '#8F2D38'},
-        {'name': 'Coral', 'hex': '#D9534F'},
+        {'name': 'Terracotta', 'hex': '#B83B2A'},
+        {'name': 'Plum Velvet', 'hex': '#8E2457'},
         {'name': 'Choco Latte', 'hex': '#8D4E3F'},
+        {'name': 'Spiced Brick', 'hex': '#9E2A2B'},
+        {'name': 'Deep Wine', 'hex': '#6B0F2B'},
+        {'name': 'Vampy Maroon', 'hex': '#590822'},
       ];
     }
   }
@@ -788,7 +1232,10 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
 
     const String jsScript = '''
       (function() {
+        window.__isCameraMirrored = true;
+
         var style = document.createElement('style');
+        style.id = 'tonematch-mirror-style';
         style.innerHTML = `
           header, footer { display: none !important; }
           body, html {
@@ -805,7 +1252,19 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
             opacity: 0 !important;
             pointer-events: none !important;
           }
-          section, video, canvas {
+          section {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            z-index: 1 !important;
+            transform: none !important;
+          }
+          video, canvas {
             position: fixed !important;
             top: 0 !important;
             left: 0 !important;
@@ -817,10 +1276,30 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
             border: none !important;
             border-radius: 0 !important;
             z-index: 1 !important;
-            transform: none !important;
+            transform: scaleX(-1) !important;
+            -webkit-transform: scaleX(-1) !important;
           }
         `;
         document.head.appendChild(style);
+
+        window.applyCameraOrientation = function() {
+          var scaleVal = window.__isCameraMirrored ? 'scaleX(-1)' : 'scaleX(1)';
+          var mediaEls = document.querySelectorAll('video, canvas');
+          for (var i = 0; i < mediaEls.length; i++) {
+            mediaEls[i].style.setProperty('transform', scaleVal, 'important');
+            mediaEls[i].style.setProperty('-webkit-transform', scaleVal, 'important');
+          }
+        };
+
+        window.setCameraMirror = function(mirrored) {
+          window.__isCameraMirrored = mirrored;
+          window.applyCameraOrientation();
+        };
+
+        var observer = new MutationObserver(function() {
+          window.applyCameraOrientation();
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
 
         function selectSdkTab(category) {
           var target = category.trim().toLowerCase();
@@ -845,26 +1324,23 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
           }
         }
 
-        // Toggle Instan Before vs After dengan mengunci transform agar tidak mirror
         window.setBeforeMode = function(isBefore, activeList) {
           try {
             var videos = document.querySelectorAll('video');
             var canvases = document.querySelectorAll('canvas');
+            window.applyCameraOrientation();
+
             if (isBefore && videos.length > 0 && canvases.length > 0) {
               for (var v = 0; v < videos.length; v++) {
                 videos[v].style.setProperty('display', 'block', 'important');
                 videos[v].style.setProperty('opacity', '1', 'important');
                 videos[v].style.setProperty('visibility', 'visible', 'important');
                 videos[v].style.setProperty('z-index', '2', 'important');
-                videos[v].style.setProperty('transform', 'none', 'important');
               }
               for (var c = 0; c < canvases.length; c++) {
                 canvases[c].style.setProperty('opacity', '0', 'important');
               }
             } else if (!isBefore && canvases.length > 0) {
-              for (var v2 = 0; v2 < videos.length; v2++) {
-                videos[v2].style.setProperty('transform', 'none', 'important');
-              }
               for (var c2 = 0; c2 < canvases.length; c2++) {
                 canvases[c2].style.setProperty('opacity', '1', 'important');
                 canvases[c2].style.setProperty('z-index', '3', 'important');
@@ -915,6 +1391,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                       colorInput.dispatchEvent(new Event('input', { bubbles: true }));
                       colorInput.dispatchEvent(new Event('change', { bubbles: true }));
                     }
+                    window.applyCameraOrientation();
                   }, 80);
                 }, index * 200);
               });
@@ -940,6 +1417,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
         };
 
         setTimeout(function() {
+          window.applyCameraOrientation();
           window.clearToneMatchMakeup();
           if (window.ToneMatchChannel) {
             window.ToneMatchChannel.postMessage('READY');
@@ -952,6 +1430,14 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
     if (mounted) {
       setState(() => _isEngineLoading = false);
     }
+  }
+
+  void _toggleCameraMirror() {
+    if (_controller == null) return;
+    setState(() {
+      _isMirrorLocked = !_isMirrorLocked;
+    });
+    _controller!.runJavaScript("if(window.setCameraMirror) window.setCameraMirror($_isMirrorLocked);");
   }
 
   void _setBeforeComparison(bool showBefore) {
@@ -1133,8 +1619,8 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                   ),
                   Expanded(
                     child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      margin: const EdgeInsets.symmetric(horizontal: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: Colors.black54,
                         borderRadius: BorderRadius.circular(20),
@@ -1149,13 +1635,26 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                         textAlign: TextAlign.center,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
                       ),
                     ),
                   ),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      CircleAvatar(
+                        backgroundColor: Colors.black54,
+                        child: IconButton(
+                          tooltip: 'Balik Cermin Kamera (Mirror)',
+                          icon: Icon(
+                            Icons.flip_rounded,
+                            color: _isMirrorLocked ? Colors.amberAccent : Colors.white,
+                            size: 19,
+                          ),
+                          onPressed: _toggleCameraMirror,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
                       if (hasAnyActiveMakeup) ...[
                         GestureDetector(
                           onTap: () => _setBeforeComparison(!_isComparingBefore),
@@ -1172,7 +1671,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                       ],
                       CircleAvatar(
                         backgroundColor:
@@ -1431,7 +1930,10 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                               const SizedBox(height: 8),
                             ],
 
-                            const Text('Makeup Style / Template Instan', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+                            Text(
+                              'Makeup Style / Template Instan (${_makeupTemplates.length} Styles)',
+                              style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
                             const SizedBox(height: 4),
                             SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
@@ -1465,7 +1967,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  'Pilihan Warna ${_selectedCategory.toUpperCase()}',
+                                  'Pilihan Warna ${_selectedCategory.toUpperCase()} (${palettes.length} Shades)',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,

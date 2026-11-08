@@ -59,7 +59,6 @@ def init_db():
         except Exception as e:
             print(f"Role column notice: {e}")
 
-        # PERBAIKAN PENTING: Pastikan kolom detected_undertone mendukung 'neutral', 'warm', 'cool'
         try:
             cursor.execute("ALTER TABLE classification_histories MODIFY COLUMN detected_undertone VARCHAR(50) NOT NULL DEFAULT 'neutral'")
         except Exception as e:
@@ -132,22 +131,14 @@ init_db()
 # FUNGSI SMART FACE CROP & ANALISIS KESEIMBANGAN UNDERTONE (NEUTRAL FIX)
 # =====================================================================
 def crop_center_face_and_analyze_skin(image_bytes: bytes):
-    """
-    1. Memotong 50% bagian tengah foto (area pipi/wajah) sesuai saran dokumentasi VLM API
-       agar latar belakang dan rambut hitam tidak mengacaukan prediksi VLM.
-    2. Menghitung indeks keseimbangan rona kulit (Warmth vs Coolness) untuk mendeteksi
-       undertone NEUTRAL yang sering terlewat oleh VLM akibat bias pencahayaan.
-    """
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     w, h = img.size
 
-    # Crop fokus ke area tengah wajah (membuang background & pinggiran rambut)
     face_crop = img.crop((int(w * 0.22), int(h * 0.20), int(w * 0.78), int(h * 0.78)))
     crop_buffer = io.BytesIO()
     face_crop.save(crop_buffer, format="JPEG", quality=90)
     cropped_bytes = crop_buffer.getvalue()
 
-    # Sampling area inti kulit wajah (tengah) untuk kalibrasi rona Neutral
     skin_patch = img.crop((int(w * 0.32), int(h * 0.32), int(w * 0.68), int(h * 0.68)))
     skin_small = skin_patch.resize((60, 60))
     pixels = list(skin_small.getdata())
@@ -157,13 +148,10 @@ def crop_center_face_and_analyze_skin(image_bytes: bytes):
     valid_skin_pixels = 0
 
     for r, g, b in pixels:
-        # Filter piksel kulit (abaikan rambut gelap/alis/bayangan hitam & pantulan lampu putih)
         lum = 0.299 * r + 0.587 * g + 0.114 * b
         if 55 < lum < 235 and r > g and r > b:
             valid_skin_pixels += 1
-            # Indikator Warm (Kuning/Keemasan tinggi: Green mendekati Red, Blue rendah)
             yellow_index = (r + g) / 2.0 - b
-            # Indikator Cool (Merah Muda/Pinkish tinggi: Red jauh di atas Green, Blue relatif tinggi)
             pink_index = (r - g) * 1.35
             warm_score += yellow_index
             cool_score += pink_index
@@ -171,7 +159,6 @@ def crop_center_face_and_analyze_skin(image_bytes: bytes):
     if valid_skin_pixels > 0:
         avg_warm = warm_score / valid_skin_pixels
         avg_cool = cool_score / valid_skin_pixels
-        # Rasio keseimbangan antara rona kuning (warm) dan pink (cool)
         diff_ratio = (avg_warm - (avg_cool * 1.45))
         if abs(diff_ratio) <= 12.0:
             skin_tone_hint = "neutral"
@@ -288,8 +275,9 @@ async def login_user(req: LoginRequest):
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
+
 # =====================================================================
-# SMART IMAGE MATCHER & MEGA KATALOG
+# SMART IMAGE MATCHER & KATEGORI FOTO PRODUK YANG SESUAI DI INTERNET
 # =====================================================================
 CATEGORY_IMAGES = {
     "lip_matte": "https://images.unsplash.com/photo-1586495777744-4413f21062fa?auto=format&fit=crop&w=600&q=80",
@@ -313,23 +301,23 @@ def get_accurate_product_image(product_name: str, product_type: str = "") -> str
     text = f"{product_name} {product_type}".lower()
     if any(k in text for k in ["tint", "stain", "jelly", "totem", "liptint"]):
         return CATEGORY_IMAGES["lip_tint"]
-    if any(k in text for k in ["gloss", "plump", "oil", "balm", "glaze"]):
+    if any(k in text for k in ["gloss", "plump", "oil", "balm", "glaze", "serum lip"]):
         return CATEGORY_IMAGES["lip_gloss"]
-    if any(k in text for k in ["lip", "matte", "velvet", "rouge", "cream", "bullet"]):
+    if any(k in text for k in ["lip", "matte", "velvet", "rouge", "cream", "bullet", "crayon", "lip paint"]):
         return CATEGORY_IMAGES["lip_matte"]
-    if any(k in text for k in ["cushion", "mesh", "pact"]):
+    if any(k in text for k in ["cushion", "mesh", "pact", "skincover"]):
         return CATEGORY_IMAGES["cushion"]
     if any(k in text for k in ["foundation", "skin tint", "bb cream", "cc cream", "base", "mousse"]):
         return CATEGORY_IMAGES["foundation"]
-    if any(k in text for k in ["powder", "compact", "loose", "setting", "blur"]):
+    if any(k in text for k in ["powder", "compact", "loose", "setting", "blur", "two way cake"]):
         return CATEGORY_IMAGES["powder"]
     if any(k in text for k in ["concealer", "corrector", "eraser"]):
         return CATEGORY_IMAGES["concealer"]
-    if any(k in text for k in ["blush", "cheek", "flush"]):
+    if any(k in text for k in ["blush", "cheek", "flush", "tame"]):
         return CATEGORY_IMAGES["blush"]
     if any(k in text for k in ["eyeshadow", "palette", "quad", "shadow"]):
         return CATEGORY_IMAGES["eyeshadow"]
-    if any(k in text for k in ["brow", "eyebrow", "liner", "eyeliner", "pencil", "pen"]):
+    if any(k in text for k in ["brow", "eyebrow", "liner", "eyeliner", "pencil", "pen", "kohl"]):
         return CATEGORY_IMAGES["eyeliner"]
     if any(k in text for k in ["mascara", "lash"]):
         return CATEGORY_IMAGES["mascara"]
@@ -345,9 +333,9 @@ def get_accurate_product_image(product_name: str, product_type: str = "") -> str
 
 def determine_undertone(product_name: str, index: int = 0) -> str:
     name_lower = product_name.lower()
-    warm_keywords = ['warm', 'golden', 'honey', 'peach', 'tan', 'amber', 'caramel', 'yellow', 'sand', 'bronze', 'coral', 'terracotta', 'butter', 'autumn', 'ginger', 'chai', 'cinnamon', 'toast']
-    cool_keywords = ['cool', 'pink', 'rose', 'blue', 'fair', 'porcelain', 'ash', 'ruby', 'berry', 'magenta', 'plum', 'mauve', 'cherry', 'lilac', 'wine', 'crimson', 'fuchsia']
-    neutral_keywords = ['neutral', 'ivory', 'natural', 'nude', 'buff', 'classic', 'medium', 'universal', 'beige', 'vanilla', 'linen', 'oat', 'cashew', 'almond', 'clear', 'translucent']
+    warm_keywords = ['warm', 'golden', 'honey', 'peach', 'tan', 'amber', 'caramel', 'yellow', 'sand', 'bronze', 'coral', 'terracotta', 'butter', 'autumn', 'ginger', 'chai', 'cinnamon', 'toast', 'apricot', 'papaya', 'spiced', 'pumpkin', 'brick', 'chili', 'sunset', 'sunlit', 'copper', 'sienna', 'ochre']
+    cool_keywords = ['cool', 'pink', 'rose', 'blue', 'fair', 'porcelain', 'ash', 'ruby', 'berry', 'magenta', 'plum', 'mauve', 'cherry', 'lilac', 'wine', 'crimson', 'fuchsia', 'orchid', 'cranberry', 'mulberry', 'sangria', 'vampy', 'maroon', 'sakura', 'lavender', 'icy', 'pearl', 'amethyst']
+    neutral_keywords = ['neutral', 'ivory', 'natural', 'nude', 'buff', 'classic', 'medium', 'universal', 'beige', 'vanilla', 'linen', 'oat', 'cashew', 'almond', 'clear', 'translucent', 'rosewood', 'taupe', 'cashmere', 'mocha', 'truffle', 'latte', 'peony', 'fig', 'cocoa', 'walnut', 'espresso', 'black', 'charcoal']
     
     for kw in warm_keywords:
         if kw in name_lower:
@@ -362,11 +350,38 @@ def determine_undertone(product_name: str, index: int = 0) -> str:
     distribution = ['warm', 'cool', 'neutral']
     return distribution[index % len(distribution)]
 
+# MEGA KATALOG 150+ PRODUK TERMASUK INSTAPERFECT CUSHION & BRAND UTAMA
 EXTENDED_CATALOGS = {
+    "instaperfect": [
+        ("Skincover Air Cushion W11 Warm Ivory", 179000.0, "warm", "cushion"),
+        ("Skincover Air Cushion W22 Warm Beige", 179000.0, "warm", "cushion"),
+        ("Skincover Air Cushion C12 Cool Ivory", 179000.0, "cool", "cushion"),
+        ("Skincover Air Cushion N21 Neutral Beige", 179000.0, "neutral", "cushion"),
+        ("Mineralight Matte Cushion W10 Warm Honey", 175000.0, "warm", "cushion"),
+        ("Mineralight Matte Cushion C20 Cool Rose", 175000.0, "cool", "cushion"),
+        ("Mineralight Matte Cushion N30 Natural", 175000.0, "neutral", "cushion"),
+        ("Matte Fit Powder Foundation W10 Warm Beige", 145000.0, "warm", "powder"),
+        ("Matte Fit Powder Foundation C20 Cool Ivory", 145000.0, "cool", "powder"),
+        ("Mattifying Pore Primer", 115000.0, "neutral", "foundation"),
+        ("City Blush Blusher Click 01 Spiffy", 105000.0, "warm", "blush"),
+        ("City Blush Blusher Click 02 Nice", 105000.0, "cool", "blush"),
+        ("Gloss Chic Lip Crayon 01 Rhythm", 95000.0, "warm", "lip_matte"),
+        ("Gloss Chic Lip Crayon 03 Soul", 95000.0, "cool", "lip_matte"),
+        ("Everlast Intense Matte Liquid Lip 01 Fierce", 109000.0, "cool", "lip_matte"),
+        ("Everlast Intense Matte Liquid Lip 03 Inspiring", 109000.0, "warm", "lip_matte"),
+        ("Highlight Matte Concealer 01 Fair", 98000.0, "cool", "concealer"),
+        ("Highlight Matte Concealer 02 Beige", 98000.0, "warm", "concealer"),
+        ("Spotlight Chromatic Eye Palette", 155000.0, "neutral", "eyeshadow"),
+        ("Genfix Waterproof Brow Styler", 99000.0, "neutral", "eyeliner"),
+        ("Hyperliquid Eyeliner", 92000.0, "neutral", "eyeliner"),
+    ],
     "wardah": [
         ("Colorfit Velvet Matte Lip Mousse 02 Joyful Orange", 73000.0, "warm", "lip_matte"),
         ("Colorfit Velvet Matte Lip Mousse 01 Brown Dreamer", 73000.0, "neutral", "lip_matte"),
         ("Colorfit Velvet Matte Lip Mousse 04 Pink Sweetheart", 73000.0, "cool", "lip_matte"),
+        ("Colorfit Last All Day Lip Paint 07 Brick On", 69000.0, "warm", "lip_matte"),
+        ("Glasting Liquid Lip 01 Rouge Flare", 93000.0, "cool", "lip_gloss"),
+        ("Glasting Liquid Lip 03 Dazzle Maple", 93000.0, "warm", "lip_gloss"),
         ("Exclusive Liquid Foundation 03 Sandy Beige", 85500.0, "warm", "foundation"),
         ("Exclusive Liquid Foundation 01 Light Beige", 85500.0, "cool", "foundation"),
         ("Colorfit Perfect Glow Cushion 22N Light Ivory", 115000.0, "neutral", "cushion"),
@@ -374,35 +389,117 @@ EXTENDED_CATALOGS = {
         ("Colorfit Fresh Matte Lip Ink 05 Berry Hype", 65000.0, "cool", "lip_tint"),
         ("Lightening Matte Powder 02 Beige", 40000.0, "warm", "powder"),
         ("Colorfit Cream Blush 01 Sand Coral", 53000.0, "warm", "blush"),
+        ("Colorfit Cream Blush 02 Merry Mauve", 53000.0, "cool", "blush"),
+        ("Colorfit Quad Eye Palette Brunette Dawn", 95000.0, "warm", "eyeshadow"),
+        ("EyeXpert Optimum Hi-Black Liner", 78000.0, "neutral", "eyeliner"),
     ],
     "emina": [
         ("Creamatte Lip Cream 03 Mauvelous", 47500.0, "cool", "lip_matte"),
         ("Creamatte Lip Cream 10 Starfish Peach", 47500.0, "warm", "lip_matte"),
         ("Creamatte Lip Cream 01 Chocolava", 47500.0, "neutral", "lip_matte"),
+        ("Magic Potion Lip Tint 01 Scarlet", 46000.0, "cool", "lip_tint"),
+        ("Magic Potion Lip Tint 03 Smitten", 46000.0, "warm", "lip_tint"),
+        ("Glossy Stain Lip Tint 01 Autumn Bell", 52000.0, "cool", "lip_tint"),
         ("Bare With Me Mineral Cushion 02 Natural", 126000.0, "neutral", "cushion"),
         ("Bare With Me Mineral Cushion 03 Caramel", 126000.0, "warm", "cushion"),
-        ("Glossy Stain Lip Tint 01 Autumn Bell", 52000.0, "cool", "lip_tint"),
         ("Daily Matte Loose Powder Warm Beige", 38000.0, "warm", "powder"),
         ("Cheek Lit Pressed Blush Pink", 41000.0, "cool", "blush"),
+        ("Cheek Lit Pressed Blush Peach", 41000.0, "warm", "blush"),
+        ("Pop Rouge Pressed Eye Shadow Romantic", 44000.0, "cool", "eyeshadow"),
     ],
     "somethinc": [
         ("Copy Paste Breathable Mesh Cushion C01 Perle", 185900.0, "cool", "cushion"),
         ("Copy Paste Breathable Mesh Cushion W01 Bijoux", 185900.0, "warm", "cushion"),
         ("Copy Paste Breathable Mesh Cushion N01 Nina", 185900.0, "neutral", "cushion"),
+        ("Hooman Breathable UV Cushion Cover W02 Coco", 189000.0, "warm", "cushion"),
         ("Ombrella Lip Totem Tint Noble Rose", 59000.0, "cool", "lip_tint"),
         ("Ombrella Lip Totem Tint Salmon Peach", 59000.0, "warm", "lip_tint"),
+        ("Checkmatte Transferproof Lipstick 02 Bishop", 99000.0, "neutral", "lip_matte"),
+        ("Checkmatte Transferproof Lipstick 06 Queen", 99000.0, "cool", "lip_matte"),
         ("Under Control HD Blur Loose Powder Warm", 115000.0, "warm", "powder"),
         ("Tamago Airy Blush Molly Pink", 79000.0, "cool", "blush"),
+        ("Tamago Airy Blush Maiden Coral", 79000.0, "warm", "blush"),
+        ("The Nobles Eyeshadow Palette Vol 1", 139000.0, "neutral", "eyeshadow"),
+        ("Forever Stay Waterproof Liquid Eyeliner Black", 69000.0, "neutral", "eyeliner"),
     ],
     "make over": [
         ("Powerstay 24H Weightless Liquid Foundation W22 Warm Ivory", 178000.0, "warm", "foundation"),
         ("Powerstay 24H Weightless Liquid Foundation C21 Pink Ivory", 178000.0, "cool", "foundation"),
         ("Powerstay 24H Weightless Liquid Foundation N30 Natural Beige", 178000.0, "neutral", "foundation"),
+        ("Hydrastay Lite Glow Cushion W33 Honey Beige", 215000.0, "warm", "cushion"),
+        ("Hydrastay Lite Glow Cushion C21 Pink Ivory", 215000.0, "cool", "cushion"),
         ("Powerstay Matte Powder Foundation Warm Sand", 188000.0, "warm", "powder"),
         ("Powerstay Transferproof Matte Lip Cream B01 No.1", 135000.0, "cool", "lip_matte"),
         ("Powerstay Transferproof Matte Lip Cream B10 Warm Coral", 135000.0, "warm", "lip_matte"),
+        ("Powerstay Glazed Lock Lip Pigment D04 Skye", 145000.0, "neutral", "lip_gloss"),
+        ("Blush On Single 03 Promiscious Peach", 98000.0, "warm", "blush"),
+        ("Blush On Single 01 Pink Fantasist", 98000.0, "cool", "blush"),
+        ("Powerstay Eye Palette Futurist Gleam", 195000.0, "neutral", "eyeshadow"),
+        ("Hyperblack Superstay Liner", 125000.0, "neutral", "eyeliner"),
+    ],
+    "skintific": [
+        ("Cover All Perfect Cushion 01 Vanilla", 159000.0, "cool", "cushion"),
+        ("Cover All Perfect Cushion 02 Ivory", 159000.0, "neutral", "cushion"),
+        ("Cover All Perfect Cushion 03A Almond", 159000.0, "warm", "cushion"),
+        ("Cover All Perfect Cushion 04 Beige", 159000.0, "warm", "cushion"),
+        ("All Day Perfect Serum Foundation 02N Natural Ivory", 169000.0, "neutral", "foundation"),
+        ("All Day Perfect Serum Foundation 03W Warm Sand", 169000.0, "warm", "foundation"),
+        ("Velvet Matte Lip Crayon 01 Peachy Keen", 89000.0, "warm", "lip_matte"),
+        ("Velvet Matte Lip Crayon 04 Berry Mauve", 89000.0, "cool", "lip_matte"),
+        ("Ultra Cover Compact Powder 02 Ivory", 129000.0, "neutral", "powder"),
+        ("5X Ceramide Barrier Moisture Gel", 139000.0, "neutral", "moisturizer"),
+    ],
+    "maybelline": [
+        ("Fit Me Matte + Poreless Liquid Foundation 128 Warm Nude", 149000.0, "warm", "foundation"),
+        ("Fit Me Matte + Poreless Liquid Foundation 115 Ivory", 149000.0, "cool", "foundation"),
+        ("Superstay Vinyl Ink Liquid Lipstick 15 Peachy", 132000.0, "warm", "lip_gloss"),
+        ("Superstay Vinyl Ink Liquid Lipstick 65 Saucy", 132000.0, "cool", "lip_gloss"),
+        ("Superstay Matte Ink 117 Groundbreaker Terracotta", 129000.0, "warm", "lip_matte"),
+        ("Fit Me Mono Blush 30 Fierce Berry", 95000.0, "cool", "blush"),
+        ("Fit Me Mono Blush 40 Proud Coral", 95000.0, "warm", "blush"),
+        ("The Blushed Nudes Eyeshadow Palette", 179000.0, "cool", "eyeshadow"),
+        ("Hyper Sharp Power Black Eyeliner", 109000.0, "neutral", "eyeliner"),
+        ("Lash Sensational Sky High Waterproof Mascara", 139000.0, "neutral", "mascara"),
+    ],
+    "esqa": [
+        ("Flawless Cushion Serum Custard Warm", 165000.0, "warm", "cushion"),
+        ("Flawless Cushion Serum Vanilla Cool", 165000.0, "cool", "cushion"),
+        ("Flawless Cushion Serum Granola Neutral", 165000.0, "neutral", "cushion"),
+        ("Cloud Kiss Refillable Powder Lipstick First Love", 99000.0, "warm", "lip_matte"),
+        ("Slick Drip Serum Lip Tint Peachykeen", 89000.0, "warm", "lip_tint"),
+        ("Wonder Crush Serum Liquid Blush Honolulu Coral", 85000.0, "warm", "blush"),
+        ("Goddess Eyeshadow Palette Peach", 135000.0, "warm", "eyeshadow"),
+    ],
+    "dear me beauty": [
+        ("Airy Poreless Fluid Foundation W01 Golden Ivory", 149000.0, "warm", "foundation"),
+        ("Serum Lip Tint Dear Elly Berry", 49000.0, "cool", "lip_tint"),
+        ("Hypergloss Lip Balm Dear Rene", 89000.0, "warm", "lip_gloss"),
+        ("Baby Facecek Liquid Blush Soft Peony", 79000.0, "neutral", "blush"),
+    ],
+    "luxcrime": [
+        ("2nd Skin Luminous Cushion W01 Warm Honey", 179000.0, "warm", "cushion"),
+        ("2nd Skin Luminous Cushion C01 Cool Vanilla", 179000.0, "cool", "cushion"),
+        ("Blur & Cover Two Way Cake Buttercream", 129000.0, "warm", "powder"),
+        ("Ultra Light Lip Stain Apricot", 89000.0, "warm", "lip_tint"),
+    ],
+    "blp beauty": [
+        ("Cover Cushion W10 Warm Ivory", 189000.0, "warm", "cushion"),
+        ("Cover Cushion N15 Medium Ivory", 189000.0, "neutral", "cushion"),
+        ("Lip Coat Butter Fudge", 139000.0, "warm", "lip_matte"),
+        ("Cheek Stain Peach Melba", 99000.0, "warm", "blush"),
+    ],
+    "hanasui": [
+        ("Serum Cushion SoulMatte 02 Natural", 75000.0, "neutral", "cushion"),
+        ("Mattedorable Lip Cream 07 Spark", 32000.0, "warm", "lip_matte"),
+        ("Tintdorable Lip Stain 02 Peachy", 25000.0, "warm", "lip_tint"),
+    ],
+    "implora": [
+        ("Healthy Glow Cushion 03 Warm Beige", 68000.0, "warm", "cushion"),
+        ("Urban Lip Cream Matte 02 Terra Cotta", 24000.0, "warm", "lip_matte"),
+        ("Jelly Tint 06 Flamingo Peach", 23000.0, "warm", "lip_tint"),
     ],
 }
+
 
 @app.post("/api/v1/admin/products/scrape")
 async def fetch_products(req: ScrapeRequest):
@@ -410,93 +507,121 @@ async def fetch_products(req: ScrapeRequest):
     cursor = conn.cursor(dictionary=True)
     
     brand_query = req.brand.strip().lower()
-    display_brand = req.brand.strip().title()
+    display_brand = req.brand.strip().title() if req.brand.strip() else "Semua Brand"
     products_added = 0
     products_updated = 0
 
     try:
-        matched_key = next((k for k in EXTENDED_CATALOGS.keys() if k in brand_query or brand_query in k), None)
+        if brand_query in ["", "all", "semua", "100", "100+", "mega", "katalog", "full"]:
+            for b_key, catalog_items in EXTENDED_CATALOGS.items():
+                b_title = "Instaperfect" if b_key == "instaperfect" else b_key.title()
+                for p_name, p_price, p_tone, p_cat in catalog_items:
+                    full_name = f"{b_title} {p_name}" if not p_name.lower().startswith(b_key) else p_name
+                    p_img = CATEGORY_IMAGES.get(p_cat, get_accurate_product_image(full_name))
+                    
+                    cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (full_name,))
+                    existing = cursor.fetchone()
+                    if not existing:
+                        cursor.execute(
+                            "INSERT INTO makeup_products (name, brand, price, target_undertone, image_url) VALUES (%s, %s, %s, %s, %s)", 
+                            (full_name, b_title, p_price, p_tone, p_img)
+                        )
+                        products_added += 1
+                    else:
+                        cursor.execute(
+                            "UPDATE makeup_products SET image_url = %s, target_undertone = %s, price = %s WHERE product_id = %s",
+                            (p_img, p_tone, p_price, existing['product_id'])
+                        )
+                        products_updated += 1
+
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return {
+                "success": True,
+                "message": f"Mega Scrape Berhasil! {products_added} produk baru ditambahkan & {products_updated} diperbarui (Termasuk Instaperfect Cushion & Brand Populer)."
+            }
+
+        matched_keys = [k for k in EXTENDED_CATALOGS.keys() if k in brand_query or brand_query in k]
         
-        if matched_key:
-            display_brand = matched_key.title()
-            for p_name, p_price, p_tone, p_cat in EXTENDED_CATALOGS[matched_key]:
-                full_name = f"{display_brand} {p_name}" if not p_name.lower().startswith(matched_key) else p_name
-                p_img = CATEGORY_IMAGES.get(p_cat, get_accurate_product_image(full_name))
-                
-                cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (full_name,))
-                existing = cursor.fetchone()
-                if not existing:
-                    cursor.execute(
-                        "INSERT INTO makeup_products (name, brand, price, target_undertone, image_url) VALUES (%s, %s, %s, %s, %s)", 
-                        (full_name, display_brand, p_price, p_tone, p_img)
-                    )
-                    products_added += 1
-                else:
-                    cursor.execute(
-                        "UPDATE makeup_products SET image_url = %s, target_undertone = %s, price = %s WHERE product_id = %s",
-                        (p_img, p_tone, p_price, existing['product_id'])
-                    )
-                    products_updated += 1
+        if matched_keys:
+            for matched_key in matched_keys:
+                b_title = "Instaperfect" if matched_key == "instaperfect" else matched_key.title()
+                for p_name, p_price, p_tone, p_cat in EXTENDED_CATALOGS[matched_key]:
+                    full_name = f"{b_title} {p_name}" if not p_name.lower().startswith(matched_key) else p_name
+                    p_img = CATEGORY_IMAGES.get(p_cat, get_accurate_product_image(full_name))
+                    
+                    cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (full_name,))
+                    existing = cursor.fetchone()
+                    if not existing:
+                        cursor.execute(
+                            "INSERT INTO makeup_products (name, brand, price, target_undertone, image_url) VALUES (%s, %s, %s, %s, %s)", 
+                            (full_name, b_title, p_price, p_tone, p_img)
+                        )
+                        products_added += 1
+                    else:
+                        cursor.execute(
+                            "UPDATE makeup_products SET image_url = %s, target_undertone = %s, price = %s WHERE product_id = %s",
+                            (p_img, p_tone, p_price, existing['product_id'])
+                        )
+                        products_updated += 1
 
-        if not matched_key:
-            try:
-                api_url = f"http://makeup-api.herokuapp.com/api/v1/products.json?brand={brand_query}"
-                response = requests.get(api_url, timeout=10)
-                
-                if response.status_code == 200 and isinstance(response.json(), list) and len(response.json()) > 0:
-                    data = response.json()
-                    for idx, item in enumerate(data[:35]):
-                        name = (item.get('name') or '').strip()
-                        if not name:
-                            continue
-                        product_type = item.get('product_type') or ''
-                        price_usd = float(item.get('price') or 0.0)
-                        if price_usd <= 0:
-                            price_usd = 11.5
-                        price_idr = round(price_usd * 15500.0, -2)
+        try:
+            api_url = f"http://makeup-api.herokuapp.com/api/v1/products.json?brand={brand_query}"
+            response = requests.get(api_url, timeout=12)
+            
+            if response.status_code == 200 and isinstance(response.json(), list) and len(response.json()) > 0:
+                data = response.json()
+                for idx, item in enumerate(data[:120]):
+                    name = (item.get('name') or '').strip()
+                    if not name:
+                        continue
+                    product_type = item.get('product_type') or ''
+                    price_usd = float(item.get('price') or 0.0)
+                    if price_usd <= 0:
+                        price_usd = 11.5
+                    price_idr = round(price_usd * 15500.0, -2)
+                    
+                    raw_img = (item.get('api_featured_image') or item.get('image_link') or '').strip()
+                    if raw_img.startswith('//'):
+                        raw_img = "https:" + raw_img
+                    elif raw_img.startswith('http://'):
+                        raw_img = raw_img.replace('http://', 'https://', 1)
                         
-                        raw_img = (item.get('api_featured_image') or item.get('image_link') or '').strip()
-                        if raw_img.startswith('//'):
-                            raw_img = "https:" + raw_img
-                        elif raw_img.startswith('http://'):
-                            raw_img = raw_img.replace('http://', 'https://', 1)
-                            
-                        if not raw_img or any(dead in raw_img for dead in ['purpicks', 'imancosmetics', 'sallybs']):
-                            image_url = get_accurate_product_image(name, product_type)
-                        else:
-                            image_url = raw_img
+                    if not raw_img or any(dead in raw_img for dead in ['purpicks', 'imancosmetics', 'sallybs']):
+                        image_url = get_accurate_product_image(name, product_type)
+                    else:
+                        image_url = raw_img
 
-                        colors = item.get('product_colors') or []
-                        shade_names = " ".join([c.get('colour_name', '') for c in colors[:3] if c.get('colour_name')])
-                        smart_undertone = determine_undertone(f"{name} {shade_names}", idx)
+                    colors = item.get('product_colors') or []
+                    shade_names = " ".join([c.get('colour_name', '') for c in colors[:3] if c.get('colour_name')])
+                    smart_undertone = determine_undertone(f"{name} {shade_names}", idx)
 
-                        cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (name,))
-                        existing = cursor.fetchone()
-                        if not existing:
-                            cursor.execute(
-                                "INSERT INTO makeup_products (name, brand, price, target_undertone, image_url) VALUES (%s, %s, %s, %s, %s)", 
-                                (name, display_brand, price_idr, smart_undertone, image_url)
-                            )
-                            products_added += 1
-                        else:
-                            cursor.execute(
-                                "UPDATE makeup_products SET image_url = %s, target_undertone = %s WHERE product_id = %s",
-                                (image_url, smart_undertone, existing['product_id'])
-                            )
-                            products_updated += 1
-            except Exception as api_err:
-                print(f"Makeup API Notice: {api_err}")
+                    cursor.execute("SELECT product_id FROM makeup_products WHERE name = %s", (name,))
+                    existing = cursor.fetchone()
+                    if not existing:
+                        cursor.execute(
+                            "INSERT INTO makeup_products (name, brand, price, target_undertone, image_url) VALUES (%s, %s, %s, %s, %s)", 
+                            (name, display_brand, price_idr, smart_undertone, image_url)
+                        )
+                        products_added += 1
+                    else:
+                        cursor.execute(
+                            "UPDATE makeup_products SET image_url = %s, target_undertone = %s WHERE product_id = %s",
+                            (image_url, smart_undertone, existing['product_id'])
+                        )
+                        products_updated += 1
+        except Exception as api_err:
+            print(f"Makeup API Notice: {api_err}")
 
         if products_added == 0 and products_updated == 0:
             generated_catalog = [
-                (f"{display_brand} Flawless Glow Cushion W01 Warm Honey", 129000.0, "warm", "cushion"),
-                (f"{display_brand} Flawless Glow Cushion C01 Porcelain Rose", 129000.0, "cool", "cushion"),
-                (f"{display_brand} Flawless Glow Cushion N02 Natural Ivory", 129000.0, "neutral", "cushion"),
+                (f"{display_brand} Skincover Air Cushion W11 Warm Ivory", 179000.0, "warm", "cushion"),
+                (f"{display_brand} Skincover Air Cushion C12 Cool Ivory", 179000.0, "cool", "cushion"),
+                (f"{display_brand} Skincover Air Cushion N21 Neutral Beige", 179000.0, "neutral", "cushion"),
                 (f"{display_brand} Velvet Matte Lip Cream Peach Terracotta", 59000.0, "warm", "lip_matte"),
                 (f"{display_brand} Velvet Matte Lip Cream Mauve Berry", 59000.0, "cool", "lip_matte"),
                 (f"{display_brand} Soft Blur Compact Powder Warm Beige", 65000.0, "warm", "powder"),
-                (f"{display_brand} Soft Blur Compact Powder Cool Pink", 65000.0, "cool", "powder"),
-                (f"{display_brand} Soft Blur Translucent Setting Powder", 65000.0, "neutral", "powder"),
             ]
             for p_name, p_price, p_tone, p_cat in generated_catalog:
                 p_img = CATEGORY_IMAGES[p_cat]
@@ -520,7 +645,7 @@ async def fetch_products(req: ScrapeRequest):
 
 
 # =====================================================================
-# ENDPOINT ANALISIS WAJAH (AUTO FACE-CROP + KALIBRASI NEUTRAL + VLM API)
+# ENDPOINT ANALISIS WAJAH & REKOMENDASI
 # =====================================================================
 @app.post("/api/v1/analyze/undertone")
 async def analyze_undertone(
@@ -537,7 +662,6 @@ async def analyze_undertone(
 
         final_undertone = detected_undertone.strip().lower() if detected_undertone else None
 
-        # Jika belum ada dari flutter, tembak langsung ke VLM API teman Anda
         if not final_undertone or final_undertone not in ['warm', 'cool', 'neutral']:
             try:
                 vlm_res = requests.post(
@@ -585,7 +709,6 @@ async def analyze_undertone(
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
-# Endpoint untuk mengubah/mengoreksi undertone pada riwayat jika pencahayaan foto kurang pas
 @app.put("/api/v1/history/{history_id}/undertone")
 async def update_history_undertone(history_id: str, request: Request):
     try:
@@ -615,7 +738,7 @@ def get_recommendations(undertone: str, user_id: str = "usr_dummy_01"):
             LEFT JOIN favorite_products f ON p.product_id = f.product_id AND f.user_id = %s
             WHERE p.target_undertone = %s
             ORDER BY p.product_id DESC
-            LIMIT 40
+            LIMIT 120
         """, (user_id, undertone.lower()))
         products = cursor.fetchall()
         for p in products:
