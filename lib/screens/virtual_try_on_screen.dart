@@ -32,7 +32,9 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
   WebViewController? _controller;
   bool _isPermissionGranted = false;
   bool _isEngineLoading = true;
-  bool _isPanelExpanded = true;
+  
+  // 3 Mode Panel: 'full', 'compact' (minimize), 'hidden' (sembunyikan)
+  String _panelMode = 'full';
 
   bool _isComparingBefore = false;
   bool _isMirrorLocked = true;
@@ -71,7 +73,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
     {'id': 'eyeliner', 'label': 'Eyeliner'},
   ];
 
-  // Katalog Lengkap Makeup Style / Template Instan (10 - 12 Template per Set/Tone)
   List get _makeupTemplates {
     String targetTone = widget.undertone.toLowerCase();
     if (_isFreeExperiment) {
@@ -88,226 +89,52 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
 
     if (targetTone == 'warm') {
       return [
-        {
-          'name': 'Warm Sunset',
-          'icon': Icons.wb_sunny_outlined,
-          'layers': {'lipstick': '#E05A47', 'blush': '#D96B43', 'foundation': '#E5B88B', 'eyeshadow': '#B55239', 'eyeliner': '#4A3525'}
-        },
-        {
-          'name': 'Golden Glow',
-          'icon': Icons.auto_awesome,
-          'layers': {'lipstick': '#C67B5C', 'blush': '#E08A68', 'foundation': '#F3D6B6', 'eyeshadow': '#C68B59', 'eyeliner': '#1A1A1A'}
-        },
-        {
-          'name': 'Peachy Coral',
-          'icon': Icons.local_florist_outlined,
-          'layers': {'lipstick': '#F27961', 'blush': '#F48B72', 'foundation': '#F7E1C6', 'eyeshadow': '#D97B59', 'eyeliner': '#5C3A21'}
-        },
-        {
-          'name': 'Honey Bronze',
-          'icon': Icons.flare_rounded,
-          'layers': {'lipstick': '#A8422B', 'blush': '#C46243', 'foundation': '#D19C67', 'eyeshadow': '#8F4728', 'eyeliner': '#4A3525'}
-        },
-        {
-          'name': 'Spiced Autumn',
-          'icon': Icons.park_outlined,
-          'layers': {'lipstick': '#9E2A2B', 'blush': '#B83B2A', 'foundation': '#DCAC80', 'eyeshadow': '#7D3522', 'eyeliner': '#1A1A1A'}
-        },
-        {
-          'name': 'Terracotta Goddess',
-          'icon': Icons.terrain_rounded,
-          'layers': {'lipstick': '#B83B2A', 'blush': '#C85A32', 'foundation': '#E5B88B', 'eyeshadow': '#9E4732', 'eyeliner': '#4A3525'}
-        },
-        {
-          'name': 'Caramel Latte',
-          'icon': Icons.coffee_rounded,
-          'layers': {'lipstick': '#B86A50', 'blush': '#C67B5C', 'foundation': '#EDD0AA', 'eyeshadow': '#8D4E3F', 'eyeliner': '#5C3A21'}
-        },
-        {
-          'name': 'Marrakech Spice',
-          'icon': Icons.whatshot_outlined,
-          'layers': {'lipstick': '#8C1D18', 'blush': '#A84A38', 'foundation': '#C68A53', 'eyeshadow': '#7D2818', 'eyeliner': '#1A1A1A'}
-        },
-        {
-          'name': 'Sunlit Apricot',
-          'icon': Icons.wb_twilight_rounded,
-          'layers': {'lipstick': '#EB6A53', 'blush': '#F4977E', 'foundation': '#F3D6B6', 'eyeshadow': '#D48B6A', 'eyeliner': '#6E473B'}
-        },
-        {
-          'name': 'Cinnamon Chai',
-          'icon': Icons.emoji_food_beverage_outlined,
-          'layers': {'lipstick': '#9E4732', 'blush': '#B55239', 'foundation': '#DCAC80', 'eyeshadow': '#6E3522', 'eyeliner': '#4A3525'}
-        },
+        {'name': 'Latina Baddie', 'icon': Icons.local_fire_department, 'layers': {'lipstick': '#8C1D18', 'blush': '#A84A38', 'foundation': '#D6A473', 'eyeshadow': '#542A1C', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Arabic Glam', 'icon': Icons.auto_awesome, 'layers': {'lipstick': '#915B32', 'blush': '#B86A50', 'foundation': '#E5B88B', 'eyeshadow': '#AD5D3B', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Sunkissed Igari', 'icon': Icons.wb_sunny, 'layers': {'lipstick': '#E8523A', 'blush': '#E86842', 'foundation': '#F3D6B6', 'eyeshadow': '#D48B6A', 'eyeliner': '#5C3A21'}},
+        {'name': 'Warm Sunset', 'icon': Icons.wb_twilight, 'layers': {'lipstick': '#E05A47', 'blush': '#D96B43', 'foundation': '#E5B88B', 'eyeshadow': '#B55239', 'eyeliner': '#4A3525'}},
+        {'name': 'Golden Glow', 'icon': Icons.flare, 'layers': {'lipstick': '#C67B5C', 'blush': '#E08A68', 'foundation': '#F3D6B6', 'eyeshadow': '#C68B59', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Peachy Coral', 'icon': Icons.local_florist, 'layers': {'lipstick': '#F27961', 'blush': '#F48B72', 'foundation': '#F7E1C6', 'eyeshadow': '#D97B59', 'eyeliner': '#5C3A21'}},
+        {'name': 'Spiced Autumn', 'icon': Icons.park, 'layers': {'lipstick': '#9E2A2B', 'blush': '#B83B2A', 'foundation': '#DCAC80', 'eyeshadow': '#7D3522', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Caramel Latte', 'icon': Icons.coffee, 'layers': {'lipstick': '#B86A50', 'blush': '#C67B5C', 'foundation': '#EDD0AA', 'eyeshadow': '#8D4E3F', 'eyeliner': '#5C3A21'}},
+        {'name': 'Terracotta Goddess', 'icon': Icons.terrain, 'layers': {'lipstick': '#B83B2A', 'blush': '#C85A32', 'foundation': '#E5B88B', 'eyeshadow': '#9E4732', 'eyeliner': '#4A3525'}},
       ];
     } else if (targetTone == 'cool') {
       return [
-        {
-          'name': 'Berry Chic',
-          'icon': Icons.spa_outlined,
-          'layers': {'lipstick': '#B4002E', 'blush': '#C85A7C', 'foundation': '#ECC4B2', 'eyeshadow': '#8E44AD', 'eyeliner': '#1A1A1A'}
-        },
-        {
-          'name': 'Cool Mauve',
-          'icon': Icons.ac_unit,
-          'layers': {'lipstick': '#7A1C4B', 'blush': '#B95C82', 'foundation': '#F7DFD4', 'eyeshadow': '#7D4E6D', 'eyeliner': '#33333D'}
-        },
-        {
-          'name': 'Plum Fairy',
-          'icon': Icons.auto_fix_high_rounded,
-          'layers': {'lipstick': '#8E2457', 'blush': '#E06C9F', 'foundation': '#FCE8E1', 'eyeshadow': '#9B59B6', 'eyeliner': '#4A1A4B'}
-        },
-        {
-          'name': 'Icy Rose',
-          'icon': Icons.diamond_outlined,
-          'layers': {'lipstick': '#D94E78', 'blush': '#F08CAE', 'foundation': '#E5B8A8', 'eyeshadow': '#A36A8E', 'eyeliner': '#1B2845'}
-        },
-        {
-          'name': 'Vampy Wine',
-          'icon': Icons.wine_bar_rounded,
-          'layers': {'lipstick': '#590822', 'blush': '#9E2A5B', 'foundation': '#D8A590', 'eyeshadow': '#522146', 'eyeliner': '#1A1A1A'}
-        },
-        {
-          'name': 'Cherry Blossom',
-          'icon': Icons.filter_vintage_outlined,
-          'layers': {'lipstick': '#E35D82', 'blush': '#F285A2', 'foundation': '#FCE8E1', 'eyeshadow': '#D48BA8', 'eyeliner': '#5A1A32'}
-        },
-        {
-          'name': 'Lavender Frost',
-          'icon': Icons.cloud_outlined,
-          'layers': {'lipstick': '#A34878', 'blush': '#C97AA6', 'foundation': '#F2D2C4', 'eyeshadow': '#8E6A9E', 'eyeliner': '#33333D'}
-        },
-        {
-          'name': 'Cranberry Luxe',
-          'icon': Icons.celebration_outlined,
-          'layers': {'lipstick': '#9E143B', 'blush': '#C2466D', 'foundation': '#ECC4B2', 'eyeshadow': '#7A284B', 'eyeliner': '#1A1A1A'}
-        },
-        {
-          'name': 'Midnight Siren',
-          'icon': Icons.nights_stay_outlined,
-          'layers': {'lipstick': '#6B0F2B', 'blush': '#8E2457', 'foundation': '#D8A590', 'eyeshadow': '#3D1430', 'eyeliner': '#1B2845'}
-        },
-        {
-          'name': 'Rose Quartz',
-          'icon': Icons.favorite_border_rounded,
-          'layers': {'lipstick': '#C85A7C', 'blush': '#E888A6', 'foundation': '#F7DFD4', 'eyeshadow': '#B5728D', 'eyeliner': '#4A1A4B'}
-        },
+        {'name': 'Siren Eyes', 'icon': Icons.water, 'layers': {'lipstick': '#8E2457', 'blush': '#A83B5E', 'foundation': '#E5B8A8', 'eyeshadow': '#3E4E6C', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Soft Goth', 'icon': Icons.nights_stay, 'layers': {'lipstick': '#590822', 'blush': '#821D48', 'foundation': '#FCE8E1', 'eyeshadow': '#3D1430', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Douyin Doll', 'icon': Icons.face_3, 'layers': {'lipstick': '#E35D82', 'blush': '#F08CAE', 'foundation': '#FDF0EC', 'eyeshadow': '#E8B4C8', 'eyeliner': '#4A1A4B'}},
+        {'name': 'Berry Chic', 'icon': Icons.spa, 'layers': {'lipstick': '#B4002E', 'blush': '#C85A7C', 'foundation': '#ECC4B2', 'eyeshadow': '#8E44AD', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Cool Mauve', 'icon': Icons.ac_unit, 'layers': {'lipstick': '#7A1C4B', 'blush': '#B95C82', 'foundation': '#F7DFD4', 'eyeshadow': '#7D4E6D', 'eyeliner': '#33333D'}},
+        {'name': 'Icy Rose', 'icon': Icons.diamond_outlined, 'layers': {'lipstick': '#D94E78', 'blush': '#F08CAE', 'foundation': '#E5B8A8', 'eyeshadow': '#A36A8E', 'eyeliner': '#1B2845'}},
+        {'name': 'Cherry Blossom', 'icon': Icons.filter_vintage, 'layers': {'lipstick': '#E35D82', 'blush': '#F285A2', 'foundation': '#FCE8E1', 'eyeshadow': '#D48BA8', 'eyeliner': '#5A1A32'}},
+        {'name': 'Midnight Siren', 'icon': Icons.dark_mode, 'layers': {'lipstick': '#6B0F2B', 'blush': '#8E2457', 'foundation': '#D8A590', 'eyeshadow': '#3D1430', 'eyeliner': '#1B2845'}},
+        {'name': 'Cranberry Luxe', 'icon': Icons.celebration, 'layers': {'lipstick': '#9E143B', 'blush': '#C2466D', 'foundation': '#ECC4B2', 'eyeshadow': '#7A284B', 'eyeliner': '#1A1A1A'}},
       ];
     } else if (targetTone == 'neutral') {
       return [
-        {
-          'name': 'Natural Neutral',
-          'icon': Icons.face_retouching_natural,
-          'layers': {'lipstick': '#C05C67', 'blush': '#B56B60', 'foundation': '#F4D9C6', 'eyeshadow': '#A84A5C', 'eyeliner': '#33333D'}
-        },
-        {
-          'name': 'Soft Rosewood',
-          'icon': Icons.auto_awesome,
-          'layers': {'lipstick': '#8F2D38', 'blush': '#C46D6E', 'foundation': '#E2B89A', 'eyeshadow': '#8D4E3F', 'eyeliner': '#1A1A1A'}
-        },
-        {
-          'name': 'Everyday MLBB',
-          'icon': Icons.favorite_border_rounded,
-          'layers': {'lipstick': '#C86D73', 'blush': '#D97E82', 'foundation': '#FAE3D4', 'eyeshadow': '#A66F65', 'eyeliner': '#4A3525'}
-        },
-        {
-          'name': 'Velvet Mocha',
-          'icon': Icons.coffee_outlined,
-          'layers': {'lipstick': '#7A3E37', 'blush': '#A65E54', 'foundation': '#CCA07C', 'eyeshadow': '#6E453B', 'eyeliner': '#1A1A1A'}
-        },
-        {
-          'name': 'Coral Cashmere',
-          'icon': Icons.wb_twilight_rounded,
-          'layers': {'lipstick': '#D9534F', 'blush': '#E2726E', 'foundation': '#EBCAB3', 'eyeshadow': '#9C5B53', 'eyeliner': '#33333D'}
-        },
-        {
-          'name': 'Dusty Peony',
-          'icon': Icons.local_florist_outlined,
-          'layers': {'lipstick': '#B85A65', 'blush': '#CF767E', 'foundation': '#F4D9C6', 'eyeshadow': '#9E5E66', 'eyeliner': '#5A1A32'}
-        },
-        {
-          'name': 'Toasted Almond',
-          'icon': Icons.grain_rounded,
-          'layers': {'lipstick': '#9C5349', 'blush': '#B06A5E', 'foundation': '#D7AD8E', 'eyeshadow': '#855247', 'eyeliner': '#4A3525'}
-        },
-        {
-          'name': 'Cashmere Rose',
-          'icon': Icons.spa_outlined,
-          'layers': {'lipstick': '#AD4C58', 'blush': '#C46D76', 'foundation': '#EBCAB3', 'eyeshadow': '#8E595E', 'eyeliner': '#33333D'}
-        },
-        {
-          'name': 'Truffle Glam',
-          'icon': Icons.star_border_rounded,
-          'layers': {'lipstick': '#6E302B', 'blush': '#964B54', 'foundation': '#B07F59', 'eyeshadow': '#47302B', 'eyeliner': '#1A1A1A'}
-        },
-        {
-          'name': 'Vintage Nude',
-          'icon': Icons.camera_enhance_outlined,
-          'layers': {'lipstick': '#B56B60', 'blush': '#C98279', 'foundation': '#E2B89A', 'eyeshadow': '#94675E', 'eyeliner': '#4A3525'}
-        },
+        {'name': 'Clean Girl', 'icon': Icons.water_drop, 'layers': {'lipstick': '#C86D73', 'blush': '#E89296', 'foundation': '#F4D9C6', 'eyeshadow': '#D8B4A0', 'eyeliner': '#6E473B'}},
+        {'name': 'Mob Wife Glam', 'icon': Icons.diamond, 'layers': {'lipstick': '#73242B', 'blush': '#964B54', 'foundation': '#DCB294', 'eyeshadow': '#47302B', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Y2K Grunge', 'icon': Icons.headphones, 'layers': {'lipstick': '#5E2420', 'blush': '#8C3B54', 'foundation': '#EBCAB3', 'eyeshadow': '#5E4B4E', 'eyeliner': '#262626'}},
+        {'name': 'Natural Neutral', 'icon': Icons.face_retouching_natural, 'layers': {'lipstick': '#C05C67', 'blush': '#B56B60', 'foundation': '#F4D9C6', 'eyeshadow': '#A84A5C', 'eyeliner': '#33333D'}},
+        {'name': 'Soft Rosewood', 'icon': Icons.auto_awesome, 'layers': {'lipstick': '#8F2D38', 'blush': '#C46D6E', 'foundation': '#E2B89A', 'eyeshadow': '#8D4E3F', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Everyday MLBB', 'icon': Icons.favorite_border, 'layers': {'lipstick': '#C86D73', 'blush': '#D97E82', 'foundation': '#FAE3D4', 'eyeshadow': '#A66F65', 'eyeliner': '#4A3525'}},
+        {'name': 'Velvet Mocha', 'icon': Icons.coffee_outlined, 'layers': {'lipstick': '#7A3E37', 'blush': '#A65E54', 'foundation': '#CCA07C', 'eyeshadow': '#6E453B', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Dusty Peony', 'icon': Icons.local_florist, 'layers': {'lipstick': '#B85A65', 'blush': '#CF767E', 'foundation': '#F4D9C6', 'eyeshadow': '#9E5E66', 'eyeliner': '#5A1A32'}},
+        {'name': 'Vintage Nude', 'icon': Icons.camera_enhance, 'layers': {'lipstick': '#B56B60', 'blush': '#C98279', 'foundation': '#E2B89A', 'eyeshadow': '#94675E', 'eyeliner': '#4A3525'}},
       ];
     } else {
-      // Auto Preset / Eksperimen Bebas (12 Template)
       return [
-        {
-          'name': 'Natural Glow',
-          'icon': Icons.wb_sunny_outlined,
-          'layers': {'lipstick': '#C86D73', 'blush': '#E07A68', 'foundation': '#E2B89A', 'eyeshadow': '#C67B5C', 'eyeliner': '#33333D'}
-        },
-        {
-          'name': 'Bold Glam',
-          'icon': Icons.auto_awesome,
-          'layers': {'lipstick': '#B4002E', 'blush': '#A83B5E', 'foundation': '#D19C67', 'eyeshadow': '#7A3B5E', 'eyeliner': '#1A1A1A'}
-        },
-        {
-          'name': 'K-Beauty Douyin',
-          'icon': Icons.favorite_rounded,
-          'layers': {'lipstick': '#E34A6F', 'blush': '#F285A2', 'foundation': '#F7DFD4', 'eyeshadow': '#D47A92', 'eyeliner': '#4A3525'}
-        },
-        {
-          'name': 'Latte Makeup',
-          'icon': Icons.coffee_rounded,
-          'layers': {'lipstick': '#9E5842', 'blush': '#B86A50', 'foundation': '#DCAC80', 'eyeshadow': '#7D4832', 'eyeliner': '#4A3525'}
-        },
-        {
-          'name': 'Sunkissed Igari',
-          'icon': Icons.flare_rounded,
-          'layers': {'lipstick': '#E05A47', 'blush': '#EA6A57', 'foundation': '#F3D6B6', 'eyeshadow': '#C96A50', 'eyeliner': '#5A1A32'}
-        },
-        {
-          'name': 'Soft Goth',
-          'icon': Icons.nights_stay_outlined,
-          'layers': {'lipstick': '#590822', 'blush': '#8C3B54', 'foundation': '#ECC4B2', 'eyeshadow': '#4D2C4D', 'eyeliner': '#1A1A1A'}
-        },
-        {
-          'name': 'Clean Girl',
-          'icon': Icons.water_drop_outlined,
-          'layers': {'lipstick': '#D47A7E', 'blush': '#E89296', 'foundation': '#F4D9C6', 'eyeshadow': '#C48B84', 'eyeliner': '#5C3A21'}
-        },
-        {
-          'name': 'Mob Wife Glam',
-          'icon': Icons.diamond_outlined,
-          'layers': {'lipstick': '#8C1D18', 'blush': '#A65E54', 'foundation': '#D7AD8E', 'eyeshadow': '#5E4B4E', 'eyeliner': '#1A1A1A'}
-        },
-        {
-          'name': 'Balletcore Pink',
-          'icon': Icons.spa_outlined,
-          'layers': {'lipstick': '#D95B82', 'blush': '#F08CAE', 'foundation': '#FCE8E1', 'eyeshadow': '#E8B4C8', 'eyeliner': '#4A3525'}
-        },
-        {
-          'name': 'Sunset Cocktail',
-          'icon': Icons.local_bar_outlined,
-          'layers': {'lipstick': '#E8523A', 'blush': '#F48B72', 'foundation': '#E5B88B', 'eyeshadow': '#AD5D3B', 'eyeliner': '#4A3525'}
-        },
-        {
-          'name': 'Espresso Martini',
-          'icon': Icons.wine_bar_rounded,
-          'layers': {'lipstick': '#7A3E37', 'blush': '#9C5B53', 'foundation': '#CCA07C', 'eyeshadow': '#542A1C', 'eyeliner': '#1A1A1A'}
-        },
-        {
-          'name': 'Glass Skin Coral',
-          'icon': Icons.auto_fix_high_rounded,
-          'layers': {'lipstick': '#F27961', 'blush': '#F48B72', 'foundation': '#F7E1C6', 'eyeshadow': '#E28B6B', 'eyeliner': '#6E473B'}
-        },
+        {'name': 'Latina Baddie', 'icon': Icons.local_fire_department, 'layers': {'lipstick': '#8C1D18', 'blush': '#A84A38', 'foundation': '#D6A473', 'eyeshadow': '#542A1C', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Arabic Glam', 'icon': Icons.auto_awesome, 'layers': {'lipstick': '#915B32', 'blush': '#B86A50', 'foundation': '#E5B88B', 'eyeshadow': '#AD5D3B', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Siren Eyes', 'icon': Icons.water, 'layers': {'lipstick': '#8E2457', 'blush': '#A83B5E', 'foundation': '#E5B8A8', 'eyeshadow': '#3E4E6C', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Douyin Doll', 'icon': Icons.face_3, 'layers': {'lipstick': '#E35D82', 'blush': '#F08CAE', 'foundation': '#FDF0EC', 'eyeshadow': '#E8B4C8', 'eyeliner': '#4A1A4B'}},
+        {'name': 'Y2K Grunge', 'icon': Icons.headphones, 'layers': {'lipstick': '#5E2420', 'blush': '#8C3B54', 'foundation': '#EBCAB3', 'eyeshadow': '#5E4B4E', 'eyeliner': '#262626'}},
+        {'name': 'Mob Wife', 'icon': Icons.diamond, 'layers': {'lipstick': '#73242B', 'blush': '#964B54', 'foundation': '#DCB294', 'eyeshadow': '#47302B', 'eyeliner': '#1A1A1A'}},
+        {'name': 'Clean Girl', 'icon': Icons.water_drop, 'layers': {'lipstick': '#C86D73', 'blush': '#E89296', 'foundation': '#F4D9C6', 'eyeshadow': '#D8B4A0', 'eyeliner': '#6E473B'}},
+        {'name': 'Igari Blush', 'icon': Icons.favorite, 'layers': {'lipstick': '#E05A47', 'blush': '#EA6A57', 'foundation': '#F3D6B6', 'eyeshadow': '#C96A50', 'eyeliner': '#5A1A32'}},
+        {'name': 'Latte Makeup', 'icon': Icons.coffee, 'layers': {'lipstick': '#9E5842', 'blush': '#B86A50', 'foundation': '#DCAC80', 'eyeshadow': '#7D4832', 'eyeliner': '#4A3525'}},
+        {'name': 'Soft Goth', 'icon': Icons.nights_stay, 'layers': {'lipstick': '#590822', 'blush': '#821D48', 'foundation': '#FCE8E1', 'eyeshadow': '#3D1430', 'eyeliner': '#1A1A1A'}},
       ];
     }
   }
@@ -372,12 +199,11 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
     }
   }
 
-  String _getCurrentShadeName() {
-    final List palettes = _getPalettesForCategory(_selectedCategory);
-    final String? activeHex = _activeMakeupStates[_selectedCategory] ?? _selectedColor;
-    if (activeHex != null) {
+  String _getCurrentShadeName(String category, String? colorHex) {
+    final List palettes = _getPalettesForCategory(category);
+    if (colorHex != null) {
       for (var item in palettes) {
-        if (item['hex'].toString().toLowerCase() == activeHex.toLowerCase()) {
+        if (item['hex'].toString().toLowerCase() == colorHex.toLowerCase()) {
           return item['name'].toString();
         }
       }
@@ -385,15 +211,14 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
     return palettes.isNotEmpty ? palettes.first['name'].toString() : 'Default Shade';
   }
 
-  Map _getFallbackProductForCategory() {
-    final String shadeName = _getCurrentShadeName();
+  Map _getFallbackProductForCategory(String category, String shadeName) {
     final String activeTone = _isFreeExperiment
         ? (_experimentMode == 'warm' || _experimentMode == 'cool' || _experimentMode == 'neutral'
             ? _experimentMode.toUpperCase()
             : 'ALL TONE')
         : widget.undertone.toUpperCase();
 
-    if (_selectedCategory == 'lipstick') {
+    if (category == 'lipstick') {
       return {
         'product_id': 'fallback_lip',
         'brand': 'Wardah / Make Over',
@@ -403,7 +228,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
         'image_url': null,
         'is_saved': false,
       };
-    } else if (_selectedCategory == 'blush') {
+    } else if (category == 'blush') {
       return {
         'product_id': 'fallback_blush',
         'brand': 'Emina / Somethinc',
@@ -413,7 +238,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
         'image_url': null,
         'is_saved': false,
       };
-    } else if (_selectedCategory == 'foundation') {
+    } else if (category == 'foundation') {
       return {
         'product_id': 'fallback_found',
         'brand': 'Skintific',
@@ -423,7 +248,7 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
         'image_url': null,
         'is_saved': false,
       };
-    } else if (_selectedCategory == 'eyeshadow') {
+    } else if (category == 'eyeshadow') {
       return {
         'product_id': 'fallback_eye',
         'brand': 'ESQA',
@@ -446,37 +271,31 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
     }
   }
 
-  void _updateMatchedProduct() {
-    if (_apiProducts.isEmpty) {
-      setState(() {
-        _matchedProduct = _getFallbackProductForCategory();
-      });
-      return;
-    }
+  Map _findProductMatchFor(String category, String colorHex) {
+    final String shadeName = _getCurrentShadeName(category, colorHex).toLowerCase();
 
-    final String shadeName = _getCurrentShadeName().toLowerCase();
+    if (_apiProducts.isEmpty) {
+      return _getFallbackProductForCategory(category, shadeName.toUpperCase());
+    }
 
     final List categoryMatches = _apiProducts.where((prod) {
       final name = (prod['product_name'] ?? '').toString().toLowerCase();
-      if (_selectedCategory == 'lipstick') {
-        return name.contains('lip') || name.contains('tint') || name.contains('matte') || name.contains('gloss') || name.contains('cream');
-      } else if (_selectedCategory == 'blush') {
-        return name.contains('blush') || name.contains('cheek') || name.contains('rouge');
-      } else if (_selectedCategory == 'foundation') {
+      if (category == 'lipstick') {
+        return name.contains('lip') || name.contains('tint') || name.contains('matte') || name.contains('gloss') || name.contains('cream') || name.contains('crayon');
+      } else if (category == 'blush') {
+        return name.contains('blush') || name.contains('cheek') || name.contains('flush');
+      } else if (category == 'foundation') {
         return name.contains('cushion') || name.contains('foundation') || name.contains('base') || name.contains('powder');
-      } else if (_selectedCategory == 'eyeshadow') {
+      } else if (category == 'eyeshadow') {
         return name.contains('eye') || name.contains('shadow') || name.contains('palette');
-      } else if (_selectedCategory == 'eyeliner') {
-        return name.contains('liner') || name.contains('pen') || name.contains('kohl');
+      } else if (category == 'eyeliner') {
+        return name.contains('liner') || name.contains('pen') || name.contains('kohl') || name.contains('pencil');
       }
       return false;
     }).toList();
 
     if (categoryMatches.isEmpty) {
-      setState(() {
-        _matchedProduct = _getFallbackProductForCategory();
-      });
-      return;
+      return _getFallbackProductForCategory(category, shadeName.toUpperCase());
     }
 
     dynamic bestMatch = categoryMatches.first;
@@ -488,9 +307,19 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
         break;
       }
     }
+    return Map.from(bestMatch as Map);
+  }
 
+  void _updateMatchedProduct() {
+    String? activeColor = _activeMakeupStates[_selectedCategory] ?? _selectedColor;
+    if (activeColor == null) {
+      setState(() {
+        _matchedProduct = _getFallbackProductForCategory(_selectedCategory, "Default");
+      });
+      return;
+    }
     setState(() {
-      _matchedProduct = Map.from(bestMatch as Map);
+      _matchedProduct = _findProductMatchFor(_selectedCategory, activeColor);
     });
   }
 
@@ -511,7 +340,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
       );
       return;
     }
-
     try {
       http.Response response;
       if (isCurrentlySaved) {
@@ -523,7 +351,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
           body: json.encode({"user_id": _currentUid, "product_id": productId}),
         );
       }
-
       if (response.statusCode == 200) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -541,10 +368,147 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
     }
   }
 
+  void _showAllActiveProducts() {
+    final List activeItems = [];
+    
+    _activeMakeupStates.forEach((cat, color) {
+      if (color != null) {
+        Map prod = _findProductMatchFor(cat, color);
+        activeItems.add({
+          'category': cat,
+          'color': color,
+          'shade_name': _getCurrentShadeName(cat, color),
+          'product': prod,
+        });
+      }
+    });
+
+    if (activeItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Anda belum menerapkan makeup apapun!')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (modalContext) {
+        return Container(
+          padding: EdgeInsets.only(
+            top: 20,
+            left: 20,
+            right: 20,
+            bottom: MediaQuery.of(modalContext).padding.bottom + 20,
+          ),
+          height: MediaQuery.of(context).size.height * 0.75,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Daftar Produk yang Sedang Digunakan',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF4A2333)),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: activeItems.length,
+                  itemBuilder: (context, idx) {
+                    final item = activeItems[idx];
+                    final prod = item['product'];
+                    final String catName = item['category'].toString().toUpperCase();
+                    final Color shadeColor = Color(int.parse(item['color'].replaceFirst('#', '0xFF')));
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF0F5),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFF8BBD0)),
+                      ),
+                      child: Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: prod['image_url'] != null
+                                ? Image.network(prod['image_url'].toString(), width: 60, height: 60, fit: BoxFit.cover)
+                                : Container(width: 60, height: 60, color: Colors.pink.shade50, child: const Icon(Icons.brush, color: Colors.pink)),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(color: const Color(0xFFE91E63), borderRadius: BorderRadius.circular(4)),
+                                      child: Text(catName, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      width: 10, height: 10,
+                                      decoration: BoxDecoration(color: shadeColor, shape: BoxShape.circle, border: Border.all(color: Colors.black26)),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        item['shade_name'].toString(),
+                                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFE91E63)),
+                                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  prod['product_name'].toString(),
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF4A2333)),
+                                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${prod['brand']} • ${_formatRupiah(prod['price'])}',
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black87),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.shopping_bag, color: Color(0xFFE91E63)),
+                            onPressed: () => _launchMarketplace('shopee', prod['product_name'].toString(), prod['brand'].toString()),
+                          )
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _showMatchedProductDetail() {
-    final Map prod = _matchedProduct ?? _getFallbackProductForCategory();
+    final Map prod = _matchedProduct ?? _getFallbackProductForCategory(_selectedCategory, _getCurrentShadeName(_selectedCategory, _selectedColor));
     final imageUrl = prod['image_url'];
-    final String shadeName = _getCurrentShadeName();
+    final String shadeName = _getCurrentShadeName(_selectedCategory, _selectedColor);
     final String productName = (prod['product_name'] ?? 'Makeup Item').toString();
     final String brand = (prod['brand'] ?? 'Brand Kosmetik').toString();
     final String price = _formatRupiah(prod['price'] ?? 0);
@@ -781,7 +745,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
         .toUpperCase();
   }
 
-  // Katalog Palet Warna Ekstra Lengkap per Kategori & Undertone (14 - 24 Shades)
   List _getPalettesForCategory(String category) {
     if (_isFreeExperiment && _experimentMode == 'custom') {
       final customHex = _rgbToHex(_customRed.toInt(), _customGreen.toInt(), _customBlue.toInt());
@@ -798,7 +761,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
       if (_experimentMode == 'preset') effectiveTone = 'all_preset';
     }
 
-    // 1. KATEGORI FOUNDATION (14 - 20 Shade)
     if (category == 'foundation') {
       if (effectiveTone == 'warm') {
         return [
@@ -852,7 +814,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
           {'name': 'Deep Walnut', 'hex': '#73482D'},
         ];
       } else {
-        // All Preset (20 Shade Lengkap)
         return [
           {'name': 'Pearl Ivory', 'hex': '#FDF0EC'},
           {'name': 'Warm Alabaster', 'hex': '#FBF0D9'},
@@ -878,7 +839,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
       }
     }
 
-    // 2. KATEGORI EYELINER (16 Shade Lengkap)
     if (category == 'eyeliner') {
       return [
         {'name': 'Jet Black', 'hex': '#1A1A1A'},
@@ -900,7 +860,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
       ];
     }
 
-    // 3. KATEGORI EYESHADOW (16 - 20 Shade Spesifik)
     if (category == 'eyeshadow') {
       if (effectiveTone == 'warm') {
         return [
@@ -960,7 +919,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
           {'name': 'Dark Truffle', 'hex': '#47302B'},
         ];
       } else {
-        // All Preset (20 Shade Lengkap)
         return [
           {'name': 'Champagne Gold', 'hex': '#E5C39C'},
           {'name': 'Icy Pink', 'hex': '#E8B4C8'},
@@ -986,7 +944,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
       }
     }
 
-    // 4. KATEGORI BLUSH (16 - 20 Shade)
     if (category == 'blush') {
       if (effectiveTone == 'warm') {
         return [
@@ -1046,7 +1003,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
           {'name': 'Berry Nude', 'hex': '#8F2D38'},
         ];
       } else {
-        // All Preset (20 Shade Lengkap)
         return [
           {'name': 'Apricot Nectar', 'hex': '#F48B72'},
           {'name': 'Baby Doll Pink', 'hex': '#F285A2'},
@@ -1072,7 +1028,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
       }
     }
 
-    // 5. KATEGORI LIPSTICK (18 - 24 Shade Lengkap)
     if (effectiveTone == 'warm') {
       return [
         {'name': 'Apricot Nude', 'hex': '#F48B72'},
@@ -1137,7 +1092,6 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
         {'name': 'Dark Cocoa', 'hex': '#5E2420'},
       ];
     } else {
-      // All Preset (24 Shade Lengkap)
       return [
         {'name': 'Peachy Nude', 'hex': '#F27961'},
         {'name': 'Cherry Blossom', 'hex': '#E35D82'},
@@ -1656,6 +1610,15 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                       ),
                       const SizedBox(width: 6),
                       if (hasAnyActiveMakeup) ...[
+                        CircleAvatar(
+                          backgroundColor: Colors.black54,
+                          child: IconButton(
+                            tooltip: 'Lihat Makeup yang Digunakan',
+                            icon: const Icon(Icons.shopping_bag_rounded, color: Colors.white, size: 19),
+                            onPressed: _showAllActiveProducts,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
                         GestureDetector(
                           onTap: () => _setBeforeComparison(!_isComparingBefore),
                           onLongPressStart: (_) => _setBeforeComparison(true),
@@ -1813,7 +1776,11 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           InkWell(
-                            onTap: () => setState(() => _isPanelExpanded = !_isPanelExpanded),
+                            onTap: () {
+                              setState(() {
+                                _panelMode = _panelMode == 'hidden' ? 'full' : 'hidden';
+                              });
+                            },
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -1822,158 +1789,193 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                                     const Icon(Icons.tune_rounded, color: Color(0xFFE91E63), size: 16),
                                     const SizedBox(width: 6),
                                     Text(
-                                      _isPanelExpanded
-                                          ? 'Sembunyikan Panel Makeup'
-                                          : 'Buka Panel Pilihan Makeup (${_selectedCategory.toUpperCase()})',
+                                      _panelMode == 'hidden'
+                                          ? 'Buka Panel Pilihan Makeup (${_selectedCategory.toUpperCase()})'
+                                          : 'Panel Makeup (${_selectedCategory.toUpperCase()})',
                                       style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                                     ),
                                   ],
                                 ),
-                                Icon(
-                                  _isPanelExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
-                                  color: Colors.white,
-                                  size: 22,
+                                Row(
+                                  children: [
+                                    GestureDetector(
+                                      onTap: () => setState(() => _panelMode = 'full'),
+                                      child: Icon(
+                                        Icons.fullscreen_rounded,
+                                        size: 22,
+                                        color: _panelMode == 'full' ? Colors.white : Colors.white38,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    GestureDetector(
+                                      onTap: () => setState(() => _panelMode = 'compact'),
+                                      child: Icon(
+                                        Icons.close_fullscreen_rounded,
+                                        size: 20,
+                                        color: _panelMode == 'compact' ? Colors.white : Colors.white38,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    GestureDetector(
+                                      onTap: () => setState(() => _panelMode = 'hidden'),
+                                      child: Icon(
+                                        Icons.visibility_off_rounded,
+                                        size: 20,
+                                        color: _panelMode == 'hidden' ? Colors.white : Colors.white38,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
                           ),
 
-                          if (_isPanelExpanded) ...[
+                          if (_panelMode != 'hidden') ...[
                             const SizedBox(height: 8),
-                            if (_isFreeExperiment) ...[
+
+                            // --- BAGIAN FULL MODE ONLY ---
+                            if (_panelMode == 'full') ...[
+                              if (_isFreeExperiment) ...[
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: [
+                                      _buildModeChip('Auto Preset', 'preset'),
+                                      const SizedBox(width: 6),
+                                      _buildModeChip('Warm Tone', 'warm'),
+                                      const SizedBox(width: 6),
+                                      _buildModeChip('Cool Tone', 'cool'),
+                                      const SizedBox(width: 6),
+                                      _buildModeChip('Neutral Tone', 'neutral'),
+                                      const SizedBox(width: 6),
+                                      _buildModeChip('Custom Slider', 'custom'),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+
+                              if (_isFreeExperiment && _experimentMode == 'custom') ...[
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text('Custom Color Slider (RGB)', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+                                      Row(
+                                        children: [
+                                          const Text('R', style: TextStyle(color: Colors.redAccent, fontSize: 10)),
+                                          Expanded(
+                                            child: Slider(
+                                              activeColor: Colors.redAccent,
+                                              value: _customRed, min: 0, max: 255,
+                                              onChanged: (val) {
+                                                setState(() => _customRed = val);
+                                                _selectColorAndApply(_rgbToHex(_customRed.toInt(), _customGreen.toInt(), _customBlue.toInt()));
+                                              },
+                                            ),
+                                          ),
+                                          const Text('G', style: TextStyle(color: Colors.greenAccent, fontSize: 10)),
+                                          Expanded(
+                                            child: Slider(
+                                              activeColor: Colors.greenAccent,
+                                              value: _customGreen, min: 0, max: 255,
+                                              onChanged: (val) {
+                                                setState(() => _customGreen = val);
+                                                _selectColorAndApply(_rgbToHex(_customRed.toInt(), _customGreen.toInt(), _customBlue.toInt()));
+                                              },
+                                            ),
+                                          ),
+                                          const Text('B', style: TextStyle(color: Colors.blueAccent, fontSize: 10)),
+                                          Expanded(
+                                            child: Slider(
+                                              activeColor: Colors.blueAccent,
+                                              value: _customBlue, min: 0, max: 255,
+                                              onChanged: (val) {
+                                                setState(() => _customBlue = val);
+                                                _selectColorAndApply(_rgbToHex(_customRed.toInt(), _customGreen.toInt(), _customBlue.toInt()));
+                                              },
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          const Text('Intensitas Cahaya / Opacity', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+                                          const Spacer(),
+                                          Text('${(_makeupOpacity * 100).toInt()}%', style: const TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
+                                      Slider(
+                                        activeColor: Colors.amberAccent,
+                                        value: _makeupOpacity, min: 0.1, max: 1.0,
+                                        onChanged: (val) {
+                                          setState(() => _makeupOpacity = val);
+                                          _syncLayersToSdk();
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+
+                              Text(
+                                'Makeup Style / Template Instan (${_makeupTemplates.length} Styles)',
+                                style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 4),
                               SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
                                 child: Row(
-                                  children: [
-                                    _buildModeChip('Auto Preset', 'preset'),
-                                    const SizedBox(width: 6),
-                                    _buildModeChip('Warm Tone', 'warm'),
-                                    const SizedBox(width: 6),
-                                    _buildModeChip('Cool Tone', 'cool'),
-                                    const SizedBox(width: 6),
-                                    _buildModeChip('Neutral Tone', 'neutral'),
-                                    const SizedBox(width: 6),
-                                    _buildModeChip('Custom Slider', 'custom'),
-                                  ],
+                                  children: _makeupTemplates.map((tpl) {
+                                    return GestureDetector(
+                                      onTap: () => _applyTemplate(Map.from(tpl['layers'] as Map)),
+                                      child: Container(
+                                        margin: const EdgeInsets.only(right: 6),
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF4A2333),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(color: Colors.pinkAccent.withOpacity(0.4)),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(tpl['icon'] as IconData, size: 14, color: Colors.amberAccent),
+                                            const SizedBox(width: 4),
+                                            Text(tpl['name'].toString(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
                                 ),
                               ),
                               const SizedBox(height: 8),
                             ],
-
-                            if (_isFreeExperiment && _experimentMode == 'custom') ...[
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.08),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('Custom Color Slider (RGB)', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
-                                    Row(
-                                      children: [
-                                        const Text('R', style: TextStyle(color: Colors.redAccent, fontSize: 10)),
-                                        Expanded(
-                                          child: Slider(
-                                            activeColor: Colors.redAccent,
-                                            value: _customRed, min: 0, max: 255,
-                                            onChanged: (val) {
-                                              setState(() => _customRed = val);
-                                              _selectColorAndApply(_rgbToHex(_customRed.toInt(), _customGreen.toInt(), _customBlue.toInt()));
-                                            },
-                                          ),
-                                        ),
-                                        const Text('G', style: TextStyle(color: Colors.greenAccent, fontSize: 10)),
-                                        Expanded(
-                                          child: Slider(
-                                            activeColor: Colors.greenAccent,
-                                            value: _customGreen, min: 0, max: 255,
-                                            onChanged: (val) {
-                                              setState(() => _customGreen = val);
-                                              _selectColorAndApply(_rgbToHex(_customRed.toInt(), _customGreen.toInt(), _customBlue.toInt()));
-                                            },
-                                          ),
-                                        ),
-                                        const Text('B', style: TextStyle(color: Colors.blueAccent, fontSize: 10)),
-                                        Expanded(
-                                          child: Slider(
-                                            activeColor: Colors.blueAccent,
-                                            value: _customBlue, min: 0, max: 255,
-                                            onChanged: (val) {
-                                              setState(() => _customBlue = val);
-                                              _selectColorAndApply(_rgbToHex(_customRed.toInt(), _customGreen.toInt(), _customBlue.toInt()));
-                                            },
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        const Text('Intensitas Cahaya / Opacity', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
-                                        const Spacer(),
-                                        Text('${(_makeupOpacity * 100).toInt()}%', style: const TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                    Slider(
-                                      activeColor: Colors.amberAccent,
-                                      value: _makeupOpacity, min: 0.1, max: 1.0,
-                                      onChanged: (val) {
-                                        setState(() => _makeupOpacity = val);
-                                        _syncLayersToSdk();
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                            ],
-
-                            Text(
-                              'Makeup Style / Template Instan (${_makeupTemplates.length} Styles)',
-                              style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 4),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: _makeupTemplates.map((tpl) {
-                                  return GestureDetector(
-                                    onTap: () => _applyTemplate(Map.from(tpl['layers'] as Map)),
-                                    child: Container(
-                                      margin: const EdgeInsets.only(right: 6),
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF4A2333),
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(color: Colors.pinkAccent.withOpacity(0.4)),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(tpl['icon'] as IconData, size: 14, color: Colors.amberAccent),
-                                          const SizedBox(width: 4),
-                                          Text(tpl['name'].toString(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
+                            // --- AKHIR FULL MODE ONLY ---
 
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  'Pilihan Warna ${_selectedCategory.toUpperCase()} (${palettes.length} Shades)',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
+                                Expanded(
+                                  child: Text(
+                                    'Pilihan Warna ${_selectedCategory.toUpperCase()} (${palettes.length} Shades)',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
+                                if (isCurrentCategoryActive) const SizedBox(width: 8),
                                 if (isCurrentCategoryActive)
                                   InkWell(
                                     onTap: _clearSingleCategory,
@@ -2091,95 +2093,98 @@ class _VirtualTryOnScreenState extends State<VirtualTryOnScreen> {
                             ),
                             const SizedBox(height: 8),
 
-                            Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: _showMatchedProductDetail,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: Colors.pinkAccent.withOpacity(0.5)),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: _matchedProduct != null && _matchedProduct!['image_url'] != null
-                                            ? Image.network(
-                                                _matchedProduct!['image_url'].toString(),
-                                                width: 38,
-                                                height: 38,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (c, e, s) => Container(
+                            // --- BAGIAN FULL MODE ONLY: Rekomendasi Produk Bawah ---
+                            if (_panelMode == 'full') ...[
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  onTap: _showMatchedProductDetail,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.pinkAccent.withOpacity(0.5)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: _matchedProduct != null && _matchedProduct!['image_url'] != null
+                                              ? Image.network(
+                                                  _matchedProduct!['image_url'].toString(),
+                                                  width: 38,
+                                                  height: 38,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (c, e, s) => Container(
+                                                    width: 38,
+                                                    height: 38,
+                                                    color: const Color(0xFFE91E63).withOpacity(0.2),
+                                                    child: const Icon(Icons.shopping_bag_outlined, size: 20, color: Color(0xFFE91E63)),
+                                                  ),
+                                                )
+                                              : Container(
                                                   width: 38,
                                                   height: 38,
                                                   color: const Color(0xFFE91E63).withOpacity(0.2),
                                                   child: const Icon(Icons.shopping_bag_outlined, size: 20, color: Color(0xFFE91E63)),
                                                 ),
-                                              )
-                                            : Container(
-                                                width: 38,
-                                                height: 38,
-                                                color: const Color(0xFFE91E63).withOpacity(0.2),
-                                                child: const Icon(Icons.shopping_bag_outlined, size: 20, color: Color(0xFFE91E63)),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                _matchedProduct != null
+                                                    ? (_matchedProduct!['product_name'] ?? 'Produk Terkait').toString()
+                                                    : 'Rekomendasi ${_selectedCategory.toUpperCase()}',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              _matchedProduct != null
-                                                  ? (_matchedProduct!['product_name'] ?? 'Produk Terkait').toString()
-                                                  : 'Rekomendasi ${_selectedCategory.toUpperCase()}',
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                _matchedProduct != null
+                                                    ? '${_matchedProduct!['brand']} • ${_formatRupiah(_matchedProduct!['price'])} • Shade: ${_getCurrentShadeName(_selectedCategory, _selectedColor)}'
+                                                    : 'Ketuk untuk lihat detail & beli di Shopee/Tokopedia',
+                                                style: const TextStyle(color: Colors.amberAccent, fontSize: 9.5, fontWeight: FontWeight.w600),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              _matchedProduct != null
-                                                  ? '${_matchedProduct!['brand']} • ${_formatRupiah(_matchedProduct!['price'])} • Shade: ${_getCurrentShadeName()}'
-                                                  : 'Ketuk untuk lihat detail & beli di Shopee/Tokopedia',
-                                              style: const TextStyle(color: Colors.amberAccent, fontSize: 9.5, fontWeight: FontWeight.w600),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFE91E63),
-                                          borderRadius: BorderRadius.circular(8),
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFE91E63),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: const [
+                                              Text(
+                                                'Beli',
+                                                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                              ),
+                                              SizedBox(width: 2),
+                                              Icon(Icons.open_in_new_rounded, color: Colors.white, size: 12),
+                                            ],
+                                          ),
                                         ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: const [
-                                            Text(
-                                              'Beli',
-                                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                            ),
-                                            SizedBox(width: 2),
-                                            Icon(Icons.open_in_new_rounded, color: Colors.white, size: 12),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
+                            ],
                           ],
                         ],
                       ),
